@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import SubscriptionForm from '@/app/ui/subscription-form';
@@ -52,7 +52,36 @@ export default function SubscriptionModal({
   isOpen,
   onClose,
 }: SubscriptionModalProps) {
-  const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<typeof PLANS[0] | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSelectPlan = async (plan: typeof PLANS[0]) => {
+    if (plan.name === 'Free') {
+      onClose();
+      return;
+    }
+
+    setLoading(true);
+    setSelectedPlan(plan);
+
+    try {
+      const response = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          priceId: plan.priceId,
+          email: 'customer@example.com',
+        }),
+      });
+      const data = await response.json();
+      setClientSecret(data.clientSecret);
+    } catch (error) {
+      console.error('Error creating payment intent:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -65,7 +94,7 @@ export default function SubscriptionModal({
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-4xl rounded-2xl bg-white p-8 shadow-2xl mx-4">
+      <div className="relative z-10 w-full max-w-4xl rounded-2xl bg-white p-8 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -74,7 +103,7 @@ export default function SubscriptionModal({
           <XMarkIcon className="h-6 w-6" />
         </button>
 
-        {!selectedPriceId ? (
+        {!selectedPlan ? (
           <>
             {/* Header */}
             <div className="mb-8 text-center">
@@ -93,14 +122,11 @@ export default function SubscriptionModal({
                   key={plan.name}
                   className={`relative flex flex-col rounded-xl border-2 ${plan.color} p-6`}
                 >
-                  {/* Badge */}
                   {plan.badge && (
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-3 py-1 text-xs font-medium text-white">
                       {plan.badge}
                     </span>
                   )}
-
-                  {/* Plan name and price */}
                   <h3 className="text-xl font-bold text-gray-800">
                     {plan.name}
                   </h3>
@@ -110,8 +136,6 @@ export default function SubscriptionModal({
                     </span>
                     <span className="mb-1 text-gray-500">{plan.period}</span>
                   </div>
-
-                  {/* Features */}
                   <ul className="my-6 flex-1 space-y-2">
                     {plan.features.map((feature) => (
                       <li
@@ -123,10 +147,8 @@ export default function SubscriptionModal({
                       </li>
                     ))}
                   </ul>
-
-                  {/* Select button */}
                   <button
-                    onClick={() => setSelectedPriceId(plan.priceId)}
+                    onClick={() => handleSelectPlan(plan)}
                     className={`${plan.buttonColor} w-full rounded-lg py-2 text-sm font-medium text-white transition-colors`}
                   >
                     {plan.name === 'Free' ? 'Get Started Free' : `Choose ${plan.name}`}
@@ -135,40 +157,46 @@ export default function SubscriptionModal({
               ))}
             </div>
 
-            {/* Skip option */}
             <p className="mt-6 text-center text-sm text-gray-400">
-              <button
-                onClick={onClose}
-                className="hover:underline"
-              >
+              <button onClick={onClose} className="hover:underline">
                 Skip for now, I'll decide later
               </button>
             </p>
           </>
-        ) : (
+        ) : loading ? (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-gray-500">Loading payment form...</p>
+          </div>
+        ) : clientSecret ? (
           <>
-            {/* Checkout form */}
             <button
-              onClick={() => setSelectedPriceId(null)}
+              onClick={() => { setSelectedPlan(null); setClientSecret(null); }}
               className="mb-4 text-sm text-blue-500 hover:underline"
             >
               ← Back to plans
             </button>
-            <h2 className="mb-6 text-xl font-bold text-gray-800">
-              Complete your subscription
+            <h2 className="mb-2 text-xl font-bold text-gray-800">
+              {selectedPlan.name} Plan - {selectedPlan.price}{selectedPlan.period}
             </h2>
+            <p className="mb-6 text-sm text-gray-500">
+              Enter your payment details below
+            </p>
             <Elements
               stripe={stripePromise}
               options={{
-                mode: 'subscription',
-                amount: 1000,
-                currency: 'usd',
-                paymentMethodTypes: ['card', 'us_bank_account'],
+                clientSecret,
+                appearance: { theme: 'stripe' },
               }}
             >
-              <SubscriptionForm priceId={selectedPriceId} />
+              <SubscriptionForm priceId={selectedPlan.priceId} />
             </Elements>
           </>
+        ) : (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-red-500">
+              Something went wrong. Please try again.
+            </p>
+          </div>
         )}
       </div>
     </div>
