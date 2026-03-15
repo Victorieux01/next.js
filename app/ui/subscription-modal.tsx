@@ -13,7 +13,7 @@ const stripePromise = loadStripe(
 const PLANS = [
   {
     name: 'Free',
-    price: '$0',
+    price: '$0 CAD',
     period: '/month',
     priceId: process.env.NEXT_PUBLIC_STRIPE_FREE_PRICE_ID!,
     features: ['Basic dashboard', 'Up to 5 invoices', 'Email support'],
@@ -23,7 +23,7 @@ const PLANS = [
   },
   {
     name: 'Pro',
-    price: '$10',
+    price: '$10 CAD',
     period: '/month',
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID!,
     features: ['Everything in Free', 'Unlimited invoices', 'Priority support'],
@@ -33,7 +33,7 @@ const PLANS = [
   },
   {
     name: 'Studio',
-    price: '$29',
+    price: '$29 CAD',
     period: '/month',
     priceId: process.env.NEXT_PUBLIC_STRIPE_STUDIO_PRICE_ID!,
     features: ['Everything in Pro', 'Team access', 'Custom branding', 'API access'],
