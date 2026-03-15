@@ -5,13 +5,21 @@ export async function POST(req: Request) {
   try {
     const { priceId, email } = await req.json();
 
-    // Create a customer
     const customer = await stripe.customers.create({ email });
 
-    // Create a SetupIntent for saving payment method
     const setupIntent = await stripe.setupIntents.create({
       customer: customer.id,
-      payment_method_types: ['card', 'us_bank_account'],
+      payment_method_types: ['card', 'acss_debit'],
+      payment_method_options: {
+        acss_debit: {
+          currency: 'cad',
+          mandate_options: {
+            payment_schedule: 'interval',
+            interval_description: 'Monthly subscription',
+            transaction_type: 'personal',
+          },
+        },
+      },
     });
 
     return NextResponse.json({
