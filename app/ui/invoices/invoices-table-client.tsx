@@ -41,7 +41,11 @@ export default function InvoicesTableClient({
               {invoices?.map((invoice) => (
                 <div
                   key={invoice.id}
-                  className="mb-2 w-full rounded-md bg-white p-4"
+                  className={`mb-2 w-full rounded-md bg-white p-4 ${
+                    invoice.status === 'pending_deletion'
+                      ? 'opacity-50 pointer-events-none'
+                      : ''
+                  }`}
                 >
                   <div className="flex items-center justify-between border-b pb-4">
                     <div>
@@ -75,8 +79,16 @@ export default function InvoicesTableClient({
                           Pay
                         </button>
                       )}
-                      <DeleteInvoice id={invoice.id} customerName={invoice.name} amount={invoice.amount} />
-                      <DeleteInvoice id={invoice.id} />
+                      {invoice.status !== 'pending_deletion' && (
+                        <>
+                          <UpdateInvoice id={invoice.id} />
+                          <DeleteInvoice
+                            id={invoice.id}
+                            customerName={invoice.name}
+                            amount={invoice.amount}
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -111,7 +123,13 @@ export default function InvoicesTableClient({
                 {invoices?.map((invoice) => (
                   <tr
                     key={invoice.id}
-                    className="w-full border-b py-3 text-sm last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-lg [&:first-child>td:last-child]:rounded-tr-lg [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg"
+                    className={`w-full border-b py-3 text-sm last-of-type:border-none 
+                      [&:first-child>td:first-child]:rounded-tl-lg 
+                      [&:first-child>td:last-child]:rounded-tr-lg 
+                      [&:last-child>td:first-child]:rounded-bl-lg 
+                      [&:last-child>td:last-child]:rounded-br-lg
+                      ${invoice.status === 'pending_deletion' ? 'opacity-50' : ''}
+                    `}
                   >
                     <td className="whitespace-nowrap py-3 pl-6 pr-3">
                       <div className="flex items-center gap-3">
@@ -147,8 +165,16 @@ export default function InvoicesTableClient({
                             Pay
                           </button>
                         )}
-                        <UpdateInvoice id={invoice.id} />
-                        <DeleteInvoice id={invoice.id} />
+                        {invoice.status !== 'pending_deletion' && (
+                          <>
+                            <UpdateInvoice id={invoice.id} />
+                            <DeleteInvoice
+                              id={invoice.id}
+                              customerName={invoice.name}
+                              amount={invoice.amount}
+                            />
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

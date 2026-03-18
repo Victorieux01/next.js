@@ -1,6 +1,11 @@
+'use client';
+
 import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { deleteInvoice } from '@/app/lib/actions';
+import { useState, useTransition } from 'react';
+import { requestInvoiceDeletion } from '@/app/lib/actions';
+import DeleteConfirmationModal from '@/app/ui/invoices/delete_confirmation_modal';
+import { formatCurrency } from '@/app/lib/utils';
 
 export function CreateInvoice() {
   return (
@@ -25,15 +30,42 @@ export function UpdateInvoice({ id }: { id: string }) {
   );
 }
 
-export function DeleteInvoice({ id }: { id: string }) {
-  const deleteInvoiceWithId = deleteInvoice.bind(null, id);
- 
+export function DeleteInvoice({
+  id,
+  customerName,
+  amount,
+}: {
+  id: string;
+  customerName: string;
+  amount: number;
+}) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const handleConfirm = () => {
+    startTransition(async () => {
+      await requestInvoiceDeletion(id);
+      setIsModalOpen(false);
+    });
+  };
+
   return (
-    <form action={deleteInvoiceWithId}>
-      <button type="submit" className="rounded-md border p-2 hover:bg-gray-100">
+    <>
+      <DeleteConfirmationModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleConfirm}
+        customerName={customerName}
+        amount={formatCurrency(amount)}
+        isPending={isPending}
+      />
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="rounded-md border p-2 hover:bg-gray-100"
+      >
         <span className="sr-only">Delete</span>
         <TrashIcon className="w-4" />
       </button>
-    </form>
+    </>
   );
 }

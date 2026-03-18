@@ -1,4 +1,4 @@
-import { CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 
 export default function InvoiceStatus({ status }: { status: string }) {
@@ -9,9 +9,10 @@ export default function InvoiceStatus({ status }: { status: string }) {
         {
           'bg-gray-100 text-gray-500': status === 'pending',
           'bg-green-500 text-white': status === 'paid',
+          'bg-orange-100 text-orange-700': status === 'pending_deletion',
         },
       )}
-    > 
+    >
       {status === 'pending' ? (
         <>
           Pending
@@ -22,6 +23,12 @@ export default function InvoiceStatus({ status }: { status: string }) {
         <>
           Paid
           <CheckIcon className="ml-1 w-4 text-white" />
+        </>
+      ) : null}
+      {status === 'pending_deletion' ? (
+        <>
+          Pending Deletion
+          <TrashIcon className="ml-1 w-4 text-orange-700" />
         </>
       ) : null}
     </span>
