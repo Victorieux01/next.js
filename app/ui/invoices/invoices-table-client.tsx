@@ -75,7 +75,7 @@ export default function InvoicesTableClient({
                           Pay
                         </button>
                       )}
-                      <UpdateInvoice id={invoice.id} />
+                      <DeleteInvoice id={invoice.id} customerName={invoice.name} amount={invoice.amount} />
                       <DeleteInvoice id={invoice.id} />
                     </div>
                   </div>

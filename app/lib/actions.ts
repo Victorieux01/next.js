@@ -7,6 +7,8 @@ import postgres from 'postgres';
 
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+
+import { formatCurrency } from './utils';
  
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
  
@@ -128,5 +130,49 @@ export async function authenticate(
       }
     }
     throw error;
+  }
+}
+
+export async function requestInvoiceDeletion(id: string) {
+  try {
+    // Get invoice and customer details
+    const result = await sql`
+      SELECT 
+        invoices.id,
+        invoices.amount,
+        customers.name,
+        customers.email
+      FROM invoices
+      JOIN customers ON invoices.customer_id = customers.id
+      WHERE invoices.id = ${id}
+    `;
+
+    if (result.length === 0) {
+      return { error: 'Invoice not found' };
+    }
+
+    const invoice = result[0];
+
+    // Set invoice to pending_deletion placeholder
+    await sql`
+      UPDATE invoices 
+      SET status = 'pending_deletion' 
+      WHERE id = ${id}
+    `;
+
+    // Send email to customer
+    const { sendInvoiceDeletionEmail } = await import('./sendgrid');
+    await sendInvoiceDeletionEmail(
+      invoice.email,
+      invoice.name,
+      formatCurrency(invoice.amount),
+      id,
+    );
+
+    revalidatePath('/dashboard/invoices');
+    return { success: true };
+  } catch (error) {
+    console.error('Error:', error);
+    return { error: 'Failed to request invoice deletion' };
   }
 }
