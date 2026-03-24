@@ -1,6 +1,6 @@
-import sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendInvoiceDeletionEmail(
   customerEmail: string,
@@ -11,9 +11,9 @@ export async function sendInvoiceDeletionEmail(
   const acceptUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoice-deletion?invoiceId=${invoiceId}&action=accept`;
   const declineUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoice-deletion?invoiceId=${invoiceId}&action=decline`;
 
-  const msg = {
+  await resend.emails.send({
     to: customerEmail,
-    from: process.env.SENDGRID_FROM_EMAIL!,
+    from: process.env.RESEND_FROM_EMAIL!,
     subject: 'Invoice Deletion Request - Coredon',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -22,13 +22,13 @@ export async function sendInvoiceDeletionEmail(
         <p>We are requesting to delete your invoice of <strong>${amount}</strong>.</p>
         <p>Please confirm whether you accept or decline this deletion:</p>
         <div style="margin: 30px 0;">
-          <a href="${acceptUrl}" 
-             style="background-color: #ef4444; color: white; padding: 12px 24px; 
+          <a href="${acceptUrl}"
+             style="background-color: #ef4444; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin-right: 16px;">
             Accept Deletion
           </a>
-          <a href="${declineUrl}" 
-             style="background-color: #22c55e; color: white; padding: 12px 24px; 
+          <a href="${declineUrl}"
+             style="background-color: #22c55e; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px;">
             Decline Deletion
           </a>
@@ -39,7 +39,5 @@ export async function sendInvoiceDeletionEmail(
         <p>Best regards,<br/>The Coredon Team</p>
       </div>
     `,
-  };
-
-  await sgMail.send(msg);
+  });
 }
