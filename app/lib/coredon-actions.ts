@@ -76,16 +76,17 @@ export async function toggleProjectPin(id: string, pinned: boolean) {
 
 // ── CLIENTS ──
 export async function createClient(formData: FormData) {
-  const company = formData.get('company') as string;
-  const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
-  const phone = formData.get('phone') as string;
-  const address = formData.get('address') as string;
-  const note = formData.get('note') as string;
+  const company     = formData.get('company') as string;
+  const name        = formData.get('name') as string;
+  const email       = formData.get('email') as string;
+  const phone       = formData.get('phone') as string;
+  const address     = formData.get('address') as string;
+  const note        = formData.get('note') as string;
+  const outstanding = parseFloat(formData.get('outstanding') as string) || 0;
 
   await sql`
     INSERT INTO coredon_clients (company, name, email, phone, address, note, outstanding)
-    VALUES (${company}, ${name}, ${email}, ${phone}, ${address}, ${note || 'New Client'}, 0)
+    VALUES (${company}, ${name}, ${email}, ${phone}, ${address}, ${note || 'New Client'}, ${outstanding})
   `;
   revalidatePath('/dashboard/clients');
 }
