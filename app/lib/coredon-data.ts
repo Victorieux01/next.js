@@ -3,6 +3,40 @@ import { Project, CoredonClient } from './coredon-types';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+function toStr(v: unknown): string {
+  if (!v) return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeProject(row: any): Project {
+  return {
+    ...row,
+    amount: parseFloat(row.amount) || 0,
+    start_date: toStr(row.start_date),
+    end_date: toStr(row.end_date),
+    expected_date: toStr(row.expected_date),
+    completion_date: toStr(row.completion_date),
+    prepaid_date: toStr(row.prepaid_date),
+    released_date: toStr(row.released_date),
+    created_at: toStr(row.created_at),
+    revisions: Array.isArray(row.revisions) ? row.revisions : [],
+    versions: Array.isArray(row.versions) ? row.versions : [],
+    files: Array.isArray(row.files) ? row.files : [],
+    disputes: Array.isArray(row.disputes) ? row.disputes : [],
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeClient(row: any): CoredonClient {
+  return {
+    ...row,
+    outstanding: parseFloat(row.outstanding) || 0,
+    created_at: toStr(row.created_at),
+  };
+}
+
 export async function fetchDashboardData() {
   try {
     const projects = await fetchAllProjects();
@@ -43,7 +77,7 @@ export async function fetchAllProjects(): Promise<Project[]> {
       GROUP BY p.id
       ORDER BY p.created_at DESC
     `;
-    return rows as unknown as Project[];
+    return (rows as unknown[]).map(serializeProject);
   } catch (error) {
     console.error('fetchAllProjects error:', error);
     return [];
@@ -67,7 +101,7 @@ export async function fetchProjectById(id: string): Promise<Project | null> {
       WHERE p.id = ${id}
       GROUP BY p.id
     `;
-    return rows[0] as unknown as Project ?? null;
+    return rows[0] ? serializeProject(rows[0]) : null;
   } catch (error) {
     console.error('fetchProjectById error:', error);
     return null;
@@ -77,7 +111,7 @@ export async function fetchProjectById(id: string): Promise<Project | null> {
 export async function fetchAllClients(): Promise<CoredonClient[]> {
   try {
     const rows = await sql`SELECT * FROM coredon_clients ORDER BY created_at DESC`;
-    return rows as unknown as CoredonClient[];
+    return (rows as unknown[]).map(serializeClient);
   } catch (error) {
     console.error('fetchAllClients error:', error);
     return [];
