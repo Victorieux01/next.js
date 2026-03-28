@@ -1,26 +1,21 @@
 import '@/app/ui/global.css';
-import { inter } from '@/app/ui/fonts';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Metadata } from 'next';
 
- 
 export const metadata: Metadata = {
-  title: {
-    template: '%s | Coredon Dashboard',
-    default: 'Coredon Dashboard',
-  },
-  description: 'The official Next.js Learn Dashboard built with App Router.',
-  metadataBase: new URL('https://next-learn-dashboard.vercel.sh'),
+  title: { template: '%s | Coredon', default: 'Coredon Dashboard' },
+  description: 'Coredon — Invoice and project management dashboard',
 };
- 
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased`}>{children}</body>
+      <body className={jakarta.className}>{children}</body>
     </html>
   );
 }
