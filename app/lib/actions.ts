@@ -3,32 +3,26 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import postgres from 'postgres';
-
+import supabase from './supabase';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
 
 import { formatCurrency } from './utils';
- 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
- 
+
 const FormSchema = z.object({
   id: z.string(),
-  customerId: z.string({invalid_type_error: 'Please select a customer.',
-
-  }),  
+  customerId: z.string({ invalid_type_error: 'Please select a customer.' }),
   amount: z.coerce.number().gt(0, { message: 'Please enter an amount greater than $0.' }),
-  status: z.enum(['pending', 'paid'],{invalid_type_error: 'Please select an invoice status.',}),
+  status: z.enum(['pending', 'paid'], { invalid_type_error: 'Please select an invoice status.' }),
   date: z.string(),
 });
- 
+
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
-
 export async function deleteInvoice(id: string) {
-    await sql`DELETE FROM invoices WHERE id = ${id}`;
-    revalidatePath('/dashboard/invoices');
+  await supabase.from('invoices').delete().eq('id', id);
+  revalidatePath('/dashboard/invoices');
 }
 
 export type State = {
@@ -39,85 +33,76 @@ export type State = {
   };
   message?: string | null;
 };
- 
+
 export async function createInvoice(prevState: State, formData: FormData) {
-  // Validate form using Zod
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
- 
-  // If form validation fails, return errors early. Otherwise, continue.
+
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
       message: 'Missing Fields. Failed to Create Invoice.',
     };
   }
- 
-  // Prepare data for insertion into the database
+
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
- 
-  // Insert data into the database
+
   try {
-    await sql`
-      INSERT INTO invoices (customer_id, amount, status, date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
-    `;
+    const { error } = await supabase.from('invoices').insert({
+      customer_id: customerId,
+      amount: amountInCents,
+      status,
+      date,
+    });
+    if (error) throw error;
   } catch (error) {
-    // If a database error occurs, return a more specific error.
-    return {
-      message: 'Database Error: Failed to Create Invoice.',
-    };
+    console.error(error);
+    return { message: 'Database Error: Failed to Create Invoice.' };
   }
- 
-  // Revalidate the cache for the invoices page and redirect the user.
+
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
 
-export async function updateInvoice(
-  id: string,
-  prevState: State,
-  formData: FormData,
-) {
+export async function updateInvoice(id: string, prevState: State, formData: FormData) {
   const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
- 
+
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
       message: 'Missing Fields. Failed to Update Invoice.',
     };
   }
- 
+
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
- 
+
   try {
-    await sql`
-      UPDATE invoices
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-      WHERE id = ${id}
-    `;
+    const { error } = await supabase.from('invoices').update({
+      customer_id: customerId,
+      amount: amountInCents,
+      status,
+    }).eq('id', id);
+    if (error) throw error;
   } catch (error) {
+    console.error(error);
     return { message: 'Database Error: Failed to Update Invoice.' };
   }
- 
+
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
 
-export async function authenticate(
-  prevState: string | undefined,
-  formData: FormData,
-) {
+export async function authenticate(prevState: string | undefined, formData: FormData) {
   try {
     await signIn('credentials', formData);
   } catch (error) {
@@ -135,37 +120,24 @@ export async function authenticate(
 
 export async function requestInvoiceDeletion(id: string) {
   try {
-    // Get invoice and customer details
-    const result = await sql`
-      SELECT 
-        invoices.id,
-        invoices.amount,
-        customers.name,
-        customers.email
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE invoices.id = ${id}
-    `;
+    const { data: invoiceData, error } = await supabase
+      .from('invoices')
+      .select('id, amount, customers(name, email)')
+      .eq('id', id)
+      .single();
 
-    if (result.length === 0) {
-      return { error: 'Invoice not found' };
-    }
+    if (error || !invoiceData) return { error: 'Invoice not found' };
 
-    const invoice = result[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const customer = invoiceData.customers as any;
 
-    // Set invoice to pending_deletion placeholder
-    await sql`
-      UPDATE invoices 
-      SET status = 'pending_deletion' 
-      WHERE id = ${id}
-    `;
+    await supabase.from('invoices').update({ status: 'pending_deletion' }).eq('id', id);
 
-    // Send email to customer
     const { sendInvoiceDeletionEmail } = await import('./sendgrid');
     await sendInvoiceDeletionEmail(
-      invoice.email,
-      invoice.name,
-      formatCurrency(invoice.amount),
+      customer.email,
+      customer.name,
+      formatCurrency(invoiceData.amount),
       id,
     );
 

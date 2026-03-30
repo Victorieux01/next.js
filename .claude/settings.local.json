@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la /c/Victor/Projets/nextjs-dashboard/github/*.ts)"
+      "Bash(ls -la /c/Victor/Projets/nextjs-dashboard/github/*.ts)",
+      "Bash(nslookup aws-1-us-east-1.pooler.supabase.com)",
+      "Bash(nslookup aws-1-us-east-1.pooler.supabase.com 8.8.8.8)",
+      "Bash(timeout 5 bash -c \"echo >/dev/tcp/3.227.209.82/6543\")",
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName 3.227.209.82 -Port 6543 -InformationLevel Quiet\" 2>&1)",
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName 3.227.209.82 -Port 5432 -InformationLevel Quiet\" 2>&1)",
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName 3.227.209.82 -Port 6543 -WarningAction SilentlyContinue | Select-Object TcpTestSucceeded, PingSucceeded\" 2>&1)",
+      "Bash(powershell -Command \"\n\\\\$result = Test-NetConnection -ComputerName aws-1-us-east-1.pooler.supabase.com -Port 443 -WarningAction SilentlyContinue\n\\\\$result | Select-Object TcpTestSucceeded, PingSucceeded\n\" 2>&1)",
+      "Bash(powershell -Command \"\ntry {\n  \\\\$response = Invoke-WebRequest -Uri 'https://mbvocfbrqgbmcxntzfue.supabase.co/rest/v1/' -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop\n  Write-Host 'Supabase REST API reachable:' \\\\$response.StatusCode\n} catch {\n  Write-Host 'Error:' \\\\$_.Exception.Message\n}\n\" 2>&1)",
+      "Bash(\"C:/Victor/Projets/nextjs-dashboard/github/.env.local\")",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import supabase from '@/app/lib/supabase';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,7 +13,7 @@ export async function GET(req: Request) {
   try {
     if (action === 'accept') {
       // Delete the invoice
-      await sql`DELETE FROM invoices WHERE id = ${invoiceId}`;
+      await supabase.from('invoices').delete().eq('id', invoiceId);
       return new Response(
         `<html>
           <body style="font-family: Arial; text-align: center; padding: 50px;">
@@ -27,11 +25,11 @@ export async function GET(req: Request) {
       );
     } else {
       // Remove pending status
-      await sql`
-        UPDATE invoices 
-        SET status = 'pending' 
-        WHERE id = ${invoiceId} AND status = 'pending_deletion'
-      `;
+      await supabase
+        .from('invoices')
+        .update({ status: 'pending' })
+        .eq('id', invoiceId)
+        .eq('status', 'pending_deletion');
       return new Response(
         `<html>
           <body style="font-family: Arial; text-align: center; padding: 50px;">
