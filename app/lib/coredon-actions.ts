@@ -11,22 +11,27 @@ function getInitials(name: string): string {
 
 // ── PROJECTS ──
 export async function createProject(formData: FormData) {
-  const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
-  const description = formData.get('description') as string;
-  const amount = parseFloat(formData.get('amount') as string);
-  const startDate = formData.get('start_date') as string;
-  const endDate = formData.get('end_date') as string;
-  const expectedDate = formData.get('expected_date') as string;
+  const name           = formData.get('name') as string;
+  const email          = formData.get('email') as string;
+  const description    = formData.get('description') as string;
+  const amount         = parseFloat(formData.get('amount') as string);
+  const startDate      = formData.get('start_date') as string;
+  const endDate        = formData.get('end_date') as string;
+  const expectedDate   = formData.get('expected_date') as string;
+  const paymentMethod  = (formData.get('payment_method') as string) || null;
+  const contractNotes  = (formData.get('contract_notes') as string) || null;
 
   const initials = getInitials(name);
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
 
   await supabase.from('coredon_projects').insert({
     name, email, description, amount, status: 'Pending', initials, color,
-    start_date: startDate || null,
-    end_date: endDate || null,
-    expected_date: expectedDate || null,
+    start_date:     startDate    || null,
+    end_date:       endDate      || null,
+    expected_date:  expectedDate || null,
+    prepaid_method: paymentMethod,
+    // store contract notes in description if provided
+    ...(contractNotes ? { description: description + (description ? '\n\n' : '') + contractNotes } : {}),
   });
 
   revalidatePath('/dashboard/projects');
@@ -48,6 +53,12 @@ export async function deleteProject(id: string) {
 export async function addRevision(projectId: string, note: string) {
   const date = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_project_revisions').insert({ project_id: projectId, date, note });
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
+
+export async function addVersion(projectId: string, fileName: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  await supabase.from('coredon_project_versions').insert({ project_id: projectId, date, note: fileName });
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 

@@ -1,7 +1,8 @@
 'use client';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute } from '@/app/lib/coredon-actions';
+import { deleteProject, addRevision, openDispute, addVersion } from '@/app/lib/coredon-actions';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -197,26 +198,168 @@ export default function ProjectDetailClient({ project: p }: Props) {
         })}
       </div>
 
-      {/* Files */}
-      <div className="card" style={{ padding: 28 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 20 }}>Files &amp; Deliverables</div>
-        {(p.files || []).length === 0 && (
-          <div style={{ padding: '20px 0', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No files uploaded yet.</div>
-        )}
-        {(p.files || []).map((f, i) => (
-          <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg)', borderRadius: 10, marginBottom: i < (p.files || []).length - 1 ? 8 : 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: f.type === 'pdf' ? '#FEF2F2' : '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: f.type === 'pdf' ? '#EF4444' : '#2563EB' }}>{f.type.toUpperCase()}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{f.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{f.date}</div>
-              </div>
+      <UploadSection projectId={p.id} versions={p.versions || []} />
+      <FilesSection files={p.files || []} />
+    </div>
+  );
+}
+
+// ── Upload Your Work ────────────────────────────────────────────────────────
+function UploadSection({ projectId, versions }: { projectId: string; versions: { id: string; note: string; date: string }[] }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    for (const file of Array.from(files)) {
+      await addVersion(projectId, file.name);
+    }
+    setUploading(false);
+  }
+
+  return (
+    <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Upload Your Work</div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+        Upload your deliverable so the client can review and approve it.
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+        onClick={() => inputRef.current?.click()}
+        style={{
+          border: `2px dashed ${dragging ? '#4285F4' : 'var(--border-light)'}`,
+          borderRadius: 12,
+          padding: '40px 24px',
+          textAlign: 'center',
+          cursor: 'pointer',
+          background: dragging ? 'rgba(66,133,244,0.05)' : 'var(--bg)',
+          transition: 'all 0.15s',
+          marginBottom: 24,
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".mp4,.mov,.zip,.pdf"
+          style={{ display: 'none' }}
+          onChange={e => handleFiles(e.target.files)}
+        />
+        <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+          {uploading ? 'Uploading…' : <>Drop your file here or <span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>.mp4, .mov, .zip, .pdf — max 10 GB</div>
+      </div>
+
+      {/* Uploaded deliverables */}
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+        Uploaded Deliverables
+      </div>
+      {versions.length === 0 && (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>No deliverables uploaded yet.</div>
+      )}
+      {versions.map((v, i) => (
+        <div key={v.id} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 14px',
+          borderRadius: 10,
+          background: 'var(--bg)',
+          marginBottom: i < versions.length - 1 ? 8 : 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{v.note}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{v.date}</div>
             </div>
           </div>
-        ))}
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#4285F4' }}>Uploaded</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Files & Deliverables ────────────────────────────────────────────────────
+function FilesSection({ files }: { files: { id: string; name: string; date: string; type: string }[] }) {
+  function fileIcon(type: string) {
+    const isPdf = type === 'pdf';
+    return (
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: isPdf ? '#FEF2F2' : '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {isPdf ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        )}
       </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Files &amp; Deliverables</div>
+        <button style={{ fontSize: 13, fontWeight: 600, color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          Upload All as .zip
+        </button>
+      </div>
+
+      {/* Table header */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', padding: '8px 14px', borderBottom: '1px solid var(--border-light)', marginBottom: 4 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>File Name</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 110 }}>Upload Date</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 60, textAlign: 'right' }}>Action</span>
+      </div>
+
+      {files.length === 0 && (
+        <div style={{ padding: '20px 14px', fontSize: 13, color: 'var(--text-muted)' }}>No files yet.</div>
+      )}
+      {files.map((f, i) => (
+        <div key={f.id} style={{
+          display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', alignItems: 'center',
+          padding: '12px 14px',
+          borderBottom: i < files.length - 1 ? '1px solid var(--border-light)' : 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {fileIcon(f.type)}
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{f.name}</span>
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)', minWidth: 110 }}>{f.date}</span>
+          <div style={{ minWidth: 60, textAlign: 'right' }}>
+            <button
+              title="Download"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
