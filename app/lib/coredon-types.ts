@@ -20,6 +20,7 @@ export interface ProjectFile {
   name: string;
   date: string;
   type: 'pdf' | 'video' | 'doc';
+  url?: string;
 }
 
 export interface ProjectDispute {

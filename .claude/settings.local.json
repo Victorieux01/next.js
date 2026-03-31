@@ -11,7 +11,9 @@
       "Bash(powershell -Command \"\n\\\\$result = Test-NetConnection -ComputerName aws-1-us-east-1.pooler.supabase.com -Port 443 -WarningAction SilentlyContinue\n\\\\$result | Select-Object TcpTestSucceeded, PingSucceeded\n\" 2>&1)",
       "Bash(powershell -Command \"\ntry {\n  \\\\$response = Invoke-WebRequest -Uri 'https://mbvocfbrqgbmcxntzfue.supabase.co/rest/v1/' -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop\n  Write-Host 'Supabase REST API reachable:' \\\\$response.StatusCode\n} catch {\n  Write-Host 'Error:' \\\\$_.Exception.Message\n}\n\" 2>&1)",
       "Bash(\"C:/Victor/Projets/nextjs-dashboard/github/.env.local\")",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm run:*)",
+      "Bash(node -e \"const p = require\\(''./node_modules/@supabase/supabase-js/package.json''\\); console.log\\(p.version\\)\")"
     ]
   }
 }

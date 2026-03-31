@@ -2,6 +2,7 @@
 import supabase from './supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { sendDisputeRejectionEmail } from './sendgrid';
 
 const COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
 
@@ -73,11 +74,29 @@ export async function openDispute(projectId: string, reason: string) {
 
 export async function resolveDispute(disputeId: string, projectId: string, resolution: 'accept' | 'reject') {
   const date = new Date().toISOString().slice(0, 10);
-  const status = resolution === 'accept' ? 'Resolved' : 'Rejected — Refunded';
-  await supabase.from('coredon_project_disputes').update({ status, resolved_date: date }).eq('id', disputeId);
-  if (resolution === 'accept') {
-    await supabase.from('coredon_projects').update({ status: 'Funded' }).eq('id', projectId);
+  const status = resolution === 'accept' ? 'Resolved' : 'Rejected';
+  const [, disputeRes] = await Promise.all([
+    supabase.from('coredon_project_disputes').update({ status, resolved_date: date }).eq('id', disputeId),
+    supabase.from('coredon_project_disputes').select('reason').eq('id', disputeId).single(),
+  ]);
+  // Both accept and reject unfreeze the project (dispute is over)
+  await supabase.from('coredon_projects').update({ status: 'Funded' }).eq('id', projectId);
+  if (resolution === 'reject') {
+    const { data: proj } = await supabase.from('coredon_projects').select('email, name').eq('id', projectId).single();
+    if (proj) {
+      const reason = disputeRes.data?.reason ?? '';
+      await sendDisputeRejectionEmail(proj.email, proj.name, reason).catch(() => {});
+    }
   }
+  revalidatePath(`/dashboard/projects/${projectId}`);
+}
+
+export async function addDisputeNote(disputeId: string, note: string, projectId: string) {
+  const { data } = await supabase.from('coredon_project_disputes').select('reason').eq('id', disputeId).single();
+  const currentReason = data?.reason ?? '';
+  const date = new Date().toISOString().slice(0, 10);
+  const newReason = currentReason + `\n\n── Internal Note (${date}) ──\n${note}`;
+  await supabase.from('coredon_project_disputes').update({ reason: newReason }).eq('id', disputeId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 

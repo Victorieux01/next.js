@@ -1,13 +1,17 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDatabase = Record<string, { Row: any; Insert: any; Update: any }>;
 
 declare global {
   // eslint-disable-next-line no-var
-  var _supabaseAdmin: ReturnType<typeof createClient> | undefined;
+  var _supabaseAdmin: SupabaseClient | undefined;
 }
 
-const supabase =
+const supabase: SupabaseClient =
   global._supabaseAdmin ??
-  createClient(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (createClient as any)(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },
@@ -18,3 +22,5 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export default supabase;
+// Re-export typed helper so callers can opt-in without changing imports
+export type { AnyDatabase };

@@ -2,6 +2,32 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+export async function sendDisputeRejectionEmail(
+  clientEmail: string,
+  projectName: string,
+  reason: string,
+) {
+  await resend.emails.send({
+    to: clientEmail,
+    from: process.env.RESEND_FROM_EMAIL!,
+    subject: `Dispute Rejected — ${projectName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #EF4444;">Dispute Rejected</h2>
+        <p>Hello,</p>
+        <p>Your dispute for the project <strong>${projectName}</strong> has been reviewed and <strong>rejected</strong>.</p>
+        <p><strong>Original dispute reason:</strong></p>
+        <blockquote style="border-left: 4px solid #EF4444; padding: 12px 16px; background: #FEF2F2; color: #7F1D1D; border-radius: 4px; margin: 0 0 16px;">
+          ${reason.replace(/\n/g, '<br/>')}
+        </blockquote>
+        <p>The funds have been released and the project will continue as previously agreed.</p>
+        <p>If you have any questions, please reply to this email or contact us directly.</p>
+        <p>Best regards,<br/>The Coredon Team</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendInvoiceDeletionEmail(
   customerEmail: string,
   customerName: string,

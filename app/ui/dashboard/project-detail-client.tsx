@@ -1,8 +1,8 @@
 'use client';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute, addVersion } from '@/app/lib/coredon-actions';
+import { Project, ProjectDispute } from '@/app/lib/coredon-types';
+import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote } from '@/app/lib/coredon-actions';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -41,12 +41,40 @@ function EventIcon({ type }: { type: string }) {
   );
 }
 
+// Parse reason string — split original reason from internal notes
+function parseDisputeReason(raw: string): { original: string; notes: { date: string; text: string }[] } {
+  const parts = raw.split(/\n\n── Internal Note \(([^)]+)\) ──\n/);
+  const original = parts[0] ?? '';
+  const notes: { date: string; text: string }[] = [];
+  for (let i = 1; i < parts.length; i += 2) {
+    notes.push({ date: parts[i] ?? '', text: parts[i + 1] ?? '' });
+  }
+  return { original, notes };
+}
+
 interface Props { project: Project }
 
 export default function ProjectDetailClient({ project: p }: Props) {
   const router = useRouter();
 
+  // Dispute modal state: null | 'reason' | 'confirm'
+  const [disputeStep,  setDisputeStep]  = useState<null | 'reason' | 'confirm'>(null);
+  const [disputeReason, setDisputeReason] = useState('');
+
+  // Note modal state
+  const [noteDispute, setNoteDispute] = useState<ProjectDispute | null>(null);
+  const [noteText,    setNoteText]    = useState('');
+
+  // Revision modal
+  const [revModal,    setRevModal]    = useState(false);
+  const [revNote,     setRevNote]     = useState('');
+
+  // Loading states
+  const [submitting, setSubmitting] = useState(false);
+
+  const isDispute  = p.status === 'Dispute';
   const isFinished = p.status === 'Released';
+
   let durationVal = '—';
   if (p.start_date) {
     const refDate = isFinished ? (p.end_date || p.expected_date) : p.expected_date;
@@ -66,11 +94,166 @@ export default function ProjectDetailClient({ project: p }: Props) {
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const typeColors: Record<string, { bg: string; color: string }> = {
-    payment: { bg: '#FEF3C7', color: '#D97706' },
-    upload:  { bg: '#EFF6FF', color: '#2563EB' },
-    revision:{ bg: '#FEF3C7', color: '#D97706' },
-    released:{ bg: '#DCFCE7', color: '#16A34A' },
+    payment:  { bg: '#FEF3C7', color: '#D97706' },
+    upload:   { bg: '#EFF6FF', color: '#2563EB' },
+    revision: { bg: '#FEF3C7', color: '#D97706' },
+    released: { bg: '#DCFCE7', color: '#16A34A' },
   };
+
+  // ── PDF Export ─────────────────────────────────────────────────────────────
+  function handleExportPdf() {
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Contract — ${p.name}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#0F172A;background:#fff;padding:72px 80px;line-height:1.7;}
+    .logo{font-weight:800;font-size:22px;letter-spacing:-0.04em;margin-bottom:40px;color:#0984E3;}
+    h1{font-size:30px;font-weight:800;letter-spacing:-0.03em;margin-bottom:6px;}
+    .subtitle{font-size:14px;color:#64748B;margin-bottom:40px;}
+    .divider{border:none;border-top:1px solid #EAECF0;margin:32px 0;}
+    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94A3B8;margin-bottom:16px;}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;}
+    .field-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94A3B8;margin-bottom:4px;}
+    .field-val{font-size:15px;font-weight:700;color:#0F172A;}
+    .amount-block{background:#0F172A;color:#fff;border-radius:12px;padding:24px 28px;display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;}
+    .amount-label{font-size:13px;font-weight:600;opacity:0.6;}
+    .amount-val{font-size:28px;font-weight:800;letter-spacing:-0.03em;}
+    .desc-box{background:#F9FAFB;border-radius:10px;padding:20px 22px;font-size:14px;color:#0F172A;white-space:pre-wrap;margin-bottom:32px;}
+    .sig-row{display:flex;gap:40px;margin-top:40px;}
+    .sig-block{flex:1;}
+    .sig-line{border-top:1.5px solid #0F172A;margin-top:48px;padding-top:8px;font-size:12px;color:#64748B;}
+    .footer{margin-top:60px;font-size:11px;color:#94A3B8;text-align:center;}
+    @media print{body{padding:40px 48px;}}
+  </style>
+</head>
+<body>
+  <div class="logo">Coredon</div>
+  <h1>Project Contract</h1>
+  <div class="subtitle">Issued on ${today} &mdash; Contract ID: ${shortId}</div>
+  <hr class="divider"/>
+
+  <div class="section-title">Parties</div>
+  <div class="grid">
+    <div>
+      <div class="field-label">Client Name / Company</div>
+      <div class="field-val">${p.name}</div>
+    </div>
+    <div>
+      <div class="field-label">Client Email</div>
+      <div class="field-val">${p.email}</div>
+    </div>
+  </div>
+
+  <div class="amount-block">
+    <div>
+      <div class="amount-label">Project Amount (Escrow)</div>
+      <div class="amount-val">${fmt(p.amount)}</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="amount-label">Payment Method</div>
+      <div style="font-size:15px;font-weight:700;">${p.prepaid_method || 'Stripe Connect'}</div>
+    </div>
+  </div>
+
+  <div class="section-title">Project Details</div>
+  <div class="grid">
+    <div>
+      <div class="field-label">Start Date</div>
+      <div class="field-val">${p.start_date || '—'}</div>
+    </div>
+    <div>
+      <div class="field-label">Expected Delivery</div>
+      <div class="field-val">${p.expected_date || '—'}</div>
+    </div>
+    <div>
+      <div class="field-label">Duration</div>
+      <div class="field-val">${durationVal}</div>
+    </div>
+    <div>
+      <div class="field-label">Number of Revisions</div>
+      <div class="field-val">${(p.revisions || []).length}</div>
+    </div>
+  </div>
+
+  <div class="section-title">Scope of Work &amp; Contract Notes</div>
+  <div class="desc-box">${(p.description || '—').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+
+  <div class="section-title">Terms</div>
+  <p style="font-size:13px;color:#475569;margin-bottom:32px;line-height:1.8;">
+    The payment of <strong>${fmt(p.amount)}</strong> is held in escrow via Coredon and will be released to the service provider upon client approval of the final deliverables. If a dispute is raised, funds will remain frozen until resolved. This contract is binding once both parties have signed or the project has been funded.
+  </p>
+
+  <div class="sig-row">
+    <div class="sig-block">
+      <div class="sig-line">Client Signature &mdash; ${p.name}</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line">Service Provider Signature</div>
+    </div>
+  </div>
+
+  <div class="footer">Coredon &mdash; Secure Escrow &amp; Project Management &mdash; Contract #${shortId}</div>
+  <script>window.onload=function(){window.print();}</script>
+</body>
+</html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+  }
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  async function handleOpenDispute() {
+    if (!disputeReason.trim()) return;
+    setSubmitting(true);
+    await openDispute(p.id, disputeReason.trim());
+    setSubmitting(false);
+    setDisputeStep(null);
+    setDisputeReason('');
+    router.refresh();
+  }
+
+  async function handleAccept(d: ProjectDispute) {
+    setSubmitting(true);
+    await resolveDispute(d.id, p.id, 'accept');
+    setSubmitting(false);
+    router.refresh();
+  }
+
+  async function handleReject(d: ProjectDispute) {
+    setSubmitting(true);
+    await resolveDispute(d.id, p.id, 'reject');
+    setSubmitting(false);
+    router.refresh();
+  }
+
+  async function handleAddNote() {
+    if (!noteDispute || !noteText.trim()) return;
+    setSubmitting(true);
+    await addDisputeNote(noteDispute.id, noteText.trim(), p.id);
+    setSubmitting(false);
+    setNoteDispute(null);
+    setNoteText('');
+    router.refresh();
+  }
+
+  async function handleAddRevision() {
+    if (!revNote.trim()) return;
+    setSubmitting(true);
+    await addRevision(p.id, revNote.trim());
+    setSubmitting(false);
+    setRevModal(false);
+    setRevNote('');
+    router.refresh();
+  }
+
+  const activeDisputes = (p.disputes || []).filter(d => d.status === 'Open');
 
   return (
     <div className="page fade-in">
@@ -97,9 +280,10 @@ export default function ProjectDetailClient({ project: p }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, paddingBottom: 24, borderBottom: '1px solid var(--border-light)' }}>
             <div style={{
               width: 60, height: 60, borderRadius: 16,
-              background: p.color,
+              background: isDispute ? '#EF4444' : p.color,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: '#fff', fontWeight: 800, fontSize: 18, flexShrink: 0,
+              transition: 'background 0.2s',
             }}>
               {p.initials}
             </div>
@@ -147,26 +331,37 @@ export default function ProjectDetailClient({ project: p }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
             <button
               className="btn-action"
-              style={{ background: '#78350F', color: '#FCD34D', border: 'none', fontWeight: 700 }}
-              onClick={async () => {
-                const reason = prompt('Describe the reason for the dispute:');
-                if (reason) await openDispute(p.id, reason);
-              }}
+              disabled={isDispute}
+              style={isDispute
+                ? { opacity: 0.45, cursor: 'not-allowed', fontWeight: 700 }
+                : { background: '#78350F', color: '#FCD34D', border: 'none', fontWeight: 700 }
+              }
+              onClick={() => { if (!isDispute) setDisputeStep('reason'); }}
             >
-              Open Dispute
+              {isDispute ? 'Dispute Active' : 'Open Dispute'}
             </button>
-            <button className="btn-action" onClick={async () => {
-              const note = prompt('Revision note:');
-              if (note) await addRevision(p.id, note);
-            }}>Add Revision Note</button>
-            <button className="btn-action">Export as PDF</button>
+            <button className="btn-action" onClick={() => setRevModal(true)}>Add Revision Note</button>
+            <button className="btn-action" onClick={handleExportPdf}>Export as PDF</button>
             <div style={{ flex: 1 }} />
             <button className="btn-danger" onClick={async () => {
-              if (confirm('Delete this project?')) await deleteProject(p.id);
+              if (confirm('Delete this project? This cannot be undone.')) await deleteProject(p.id);
             }}>Delete Project</button>
           </div>
         </div>
       </div>
+
+      {/* Disputes Section */}
+      {activeDisputes.length > 0 && (
+        <DisputesSection
+          disputes={activeDisputes}
+          amount={p.amount}
+          projectId={p.id}
+          onAccept={handleAccept}
+          onReject={handleReject}
+          onAddNote={(d) => { setNoteDispute(d); setNoteText(''); }}
+          submitting={submitting}
+        />
+      )}
 
       {/* Timeline */}
       <div className="card" style={{ padding: 28, marginBottom: 20 }}>
@@ -200,23 +395,301 @@ export default function ProjectDetailClient({ project: p }: Props) {
 
       <UploadSection projectId={p.id} versions={p.versions || []} />
       <FilesSection files={p.files || []} />
+
+      {/* ── Dispute Step 1 Modal: Reason ── */}
+      {disputeStep === 'reason' && (
+        <div className="modal-overlay" onClick={() => setDisputeStep(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800 }}>Open a Dispute</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>Funds will be frozen until the dispute is resolved.</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
+                Reason for Dispute
+              </label>
+              <textarea
+                autoFocus
+                value={disputeReason}
+                onChange={e => setDisputeReason(e.target.value)}
+                placeholder="Describe what went wrong or why you are raising this dispute…"
+                rows={5}
+                style={{
+                  width: '100%', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '12px 14px', fontSize: 14, fontFamily: 'inherit',
+                  color: 'var(--text-primary)', background: 'var(--surface)',
+                  resize: 'vertical', lineHeight: 1.6,
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" onClick={() => { setDisputeStep(null); setDisputeReason(''); }}>Cancel</button>
+              <button
+                style={{ background: '#EF4444', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: disputeReason.trim() ? 'pointer' : 'not-allowed', opacity: disputeReason.trim() ? 1 : 0.5 }}
+                disabled={!disputeReason.trim()}
+                onClick={() => disputeReason.trim() && setDisputeStep('confirm')}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Dispute Step 2 Modal: Confirm ── */}
+      {disputeStep === 'confirm' && (
+        <div className="modal-overlay" onClick={() => setDisputeStep('reason')}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Confirm Dispute</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                Funds of <strong>{fmt(p.amount)}</strong> will be frozen immediately.
+              </div>
+            </div>
+
+            <div style={{ background: '#FEF2F2', borderRadius: 10, padding: '14px 16px', marginBottom: 24, borderLeft: '3px solid #EF4444' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Dispute Reason</div>
+              <div style={{ fontSize: 13, color: '#7F1D1D', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{disputeReason}</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" onClick={() => setDisputeStep('reason')}>Back</button>
+              <button
+                disabled={submitting}
+                style={{ background: '#EF4444', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}
+                onClick={handleOpenDispute}
+              >
+                {submitting ? 'Submitting…' : 'Confirm Dispute'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Revision Modal ── */}
+      {revModal && (
+        <div className="modal-overlay" onClick={() => setRevModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 16 }}>Add Revision Note</div>
+            <textarea
+              autoFocus
+              value={revNote}
+              onChange={e => setRevNote(e.target.value)}
+              placeholder="Describe the revision request…"
+              rows={4}
+              style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', color: 'var(--text-primary)', background: 'var(--surface)', resize: 'vertical', lineHeight: 1.6, marginBottom: 20 }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" onClick={() => { setRevModal(false); setRevNote(''); }}>Cancel</button>
+              <button
+                className="btn"
+                disabled={!revNote.trim() || submitting}
+                style={{ opacity: !revNote.trim() || submitting ? 0.6 : 1 }}
+                onClick={handleAddRevision}
+              >
+                {submitting ? 'Saving…' : 'Save Note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Internal Note Modal ── */}
+      {noteDispute && (
+        <div className="modal-overlay" onClick={() => setNoteDispute(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 6 }}>Add Internal Note</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              This note will be appended to the dispute record.
+            </div>
+            <textarea
+              autoFocus
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder="Add your internal note here…"
+              rows={4}
+              style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', color: 'var(--text-primary)', background: 'var(--surface)', resize: 'vertical', lineHeight: 1.6, marginBottom: 20 }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" onClick={() => { setNoteDispute(null); setNoteText(''); }}>Cancel</button>
+              <button
+                className="btn"
+                disabled={!noteText.trim() || submitting}
+                style={{ opacity: !noteText.trim() || submitting ? 0.6 : 1 }}
+                onClick={handleAddNote}
+              >
+                {submitting ? 'Saving…' : 'Add Note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Disputes Section ────────────────────────────────────────────────────────
+function DisputesSection({
+  disputes, amount, projectId,
+  onAccept, onReject, onAddNote, submitting,
+}: {
+  disputes: ProjectDispute[];
+  amount: number;
+  projectId: string;
+  onAccept: (d: ProjectDispute) => void;
+  onReject: (d: ProjectDispute) => void;
+  onAddNote: (d: ProjectDispute) => void;
+  submitting: boolean;
+}) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span style={{ fontSize: 15, fontWeight: 800, color: '#EF4444' }}>Disputes</span>
+        <span style={{ background: '#FEF2F2', color: '#EF4444', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '2px 8px' }}>
+          {disputes.length} active
+        </span>
+      </div>
+
+      {disputes.map((d, idx) => {
+        const { original, notes } = parseDisputeReason(d.reason);
+        return (
+          <div
+            key={d.id}
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid #FECACA',
+              borderLeft: '4px solid #EF4444',
+              borderRadius: 12,
+              padding: 24,
+              marginBottom: idx < disputes.length - 1 ? 12 : 0,
+            }}
+          >
+            {/* Dispute header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>Dispute #{idx + 1} — Active</div>
+                  <div style={{ fontSize: 12, color: '#EF4444', fontWeight: 600, marginTop: 2 }}>Funds are frozen — review in progress</div>
+                </div>
+              </div>
+              <span style={{ background: '#FEF2F2', color: '#EF4444', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '4px 10px', border: '1px solid #FECACA' }}>
+                Open
+              </span>
+            </div>
+
+            {/* Detail grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, padding: '16px 0', borderTop: '1px solid #FECACA', borderBottom: '1px solid #FECACA', margin: '16px 0' }}>
+              {[
+                ['DISPUTE OPENED', d.date],
+                ['AMOUNT FROZEN',  amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$'],
+                ['STATUS',         d.status],
+              ].map(([label, val], i) => (
+                <div key={label} style={{ paddingLeft: i > 0 ? 20 : 0, borderLeft: i > 0 ? '1px solid #FECACA' : 'none' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, opacity: 0.7 }}>{label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#7F1D1D' }}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Original reason */}
+            <div style={{ marginBottom: notes.length > 0 ? 12 : 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, opacity: 0.7 }}>
+                Dispute Reason
+              </div>
+              <div style={{ background: '#FEF2F2', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#7F1D1D', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #FECACA' }}>
+                {original}
+              </div>
+            </div>
+
+            {/* Internal notes */}
+            {notes.map((n, ni) => (
+              <div key={ni} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                  Internal Note — {n.date}
+                </div>
+                <div style={{ background: '#F8FAFC', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid var(--border-light)' }}>
+                  {n.text}
+                </div>
+              </div>
+            ))}
+
+            {/* Resolution actions */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button
+                disabled={submitting}
+                onClick={() => onAccept(d)}
+                style={{ flex: 1, background: '#0984E3', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+              >
+                Accept
+              </button>
+              <button
+                disabled={submitting}
+                onClick={() => onReject(d)}
+                style={{ flex: 1, background: 'var(--surface)', color: '#7F1D1D', border: '1.5px solid #EF4444', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+              >
+                Reject
+              </button>
+              <button
+                disabled={submitting}
+                onClick={() => onAddNote(d)}
+                className="btn-outline"
+                style={{ flex: 1, fontSize: 13, opacity: submitting ? 0.6 : 1 }}
+              >
+                Add Internal Note
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── Upload Your Work ────────────────────────────────────────────────────────
 function UploadSection({ projectId, versions }: { projectId: string; versions: { id: string; note: string; date: string }[] }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
+  const router    = useRouter();
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const [dragging,  setDragging]  = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
+    setError(null);
     for (const file of Array.from(files)) {
-      await addVersion(projectId, file.name);
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('projectId', projectId);
+      const res  = await fetch('/api/upload-project-file', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error ?? 'Upload failed'); break; }
     }
     setUploading(false);
+    router.refresh();
   }
 
   return (
@@ -226,7 +699,6 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
         Upload your deliverable so the client can review and approve it.
       </div>
 
-      {/* Drop zone */}
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -259,12 +731,12 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
           </svg>
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          {uploading ? 'Uploading…' : <>Drop your file here or <span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
+          {uploading ? 'Uploading…' : <><span>Drop your file here or </span><span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>.mp4, .mov, .zip, .pdf — max 10 GB</div>
+        {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
       </div>
 
-      {/* Uploaded deliverables */}
       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
         Uploaded Deliverables
       </div>
@@ -274,9 +746,7 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
       {versions.map((v, i) => (
         <div key={v.id} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 14px',
-          borderRadius: 10,
-          background: 'var(--bg)',
+          padding: '12px 14px', borderRadius: 10, background: 'var(--bg)',
           marginBottom: i < versions.length - 1 ? 8 : 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -298,7 +768,25 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
 }
 
 // ── Files & Deliverables ────────────────────────────────────────────────────
-function FilesSection({ files }: { files: { id: string; name: string; date: string; type: string }[] }) {
+function FilesSection({ files }: { files: { id: string; name: string; date: string; type: string; url?: string }[] }) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  async function handleDownload(url: string, name: string) {
+    setDownloading(name);
+    try {
+      const res  = await fetch(url);
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = href;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(href);
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   function fileIcon(type: string) {
     const isPdf = type === 'pdf';
     return (
@@ -325,7 +813,6 @@ function FilesSection({ files }: { files: { id: string; name: string; date: stri
         </button>
       </div>
 
-      {/* Table header */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', padding: '8px 14px', borderBottom: '1px solid var(--border-light)', marginBottom: 4 }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>File Name</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 110 }}>Upload Date</span>
@@ -336,27 +823,49 @@ function FilesSection({ files }: { files: { id: string; name: string; date: stri
         <div style={{ padding: '20px 14px', fontSize: 13, color: 'var(--text-muted)' }}>No files yet.</div>
       )}
       {files.map((f, i) => (
-        <div key={f.id} style={{
-          display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', alignItems: 'center',
-          padding: '12px 14px',
-          borderBottom: i < files.length - 1 ? '1px solid var(--border-light)' : 'none',
-        }}>
+        <div
+          key={f.id}
+          onDoubleClick={() => f.url && window.open(f.url, '_blank')}
+          title={f.url ? 'Double-click to open' : undefined}
+          style={{
+            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', alignItems: 'center',
+            padding: '12px 14px',
+            borderBottom: i < files.length - 1 ? '1px solid var(--border-light)' : 'none',
+            cursor: f.url ? 'pointer' : 'default',
+            borderRadius: 8,
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={e => { if (f.url) (e.currentTarget as HTMLDivElement).style.background = 'var(--bg)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {fileIcon(f.type)}
             <span style={{ fontSize: 13, fontWeight: 600 }}>{f.name}</span>
           </div>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)', minWidth: 110 }}>{f.date}</span>
           <div style={{ minWidth: 60, textAlign: 'right' }}>
-            <button
-              title="Download"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </button>
+            {f.url ? (
+              <button
+                title="Download"
+                disabled={downloading === f.name}
+                onClick={e => { e.stopPropagation(); handleDownload(f.url!, f.name); }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: downloading === f.name ? 'wait' : 'pointer', color: downloading === f.name ? 'var(--text-muted)' : '#4285F4', padding: 4 }}
+              >
+                {downloading === f.name ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                )}
+              </button>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>
+            )}
           </div>
         </div>
       ))}

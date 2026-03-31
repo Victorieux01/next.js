@@ -8,7 +8,9 @@ function toStr(v: unknown): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeProject(row: any): Project {
+function serializeProject(row: any, related: {
+  revisions: any[]; versions: any[]; files: any[]; disputes: any[];
+}): Project {
   return {
     ...row,
     amount: parseFloat(row.amount) || 0,
@@ -19,10 +21,13 @@ function serializeProject(row: any): Project {
     prepaid_date: toStr(row.prepaid_date),
     released_date: toStr(row.released_date),
     created_at: toStr(row.created_at),
-    revisions: Array.isArray(row.coredon_project_revisions) ? row.coredon_project_revisions : [],
-    versions: Array.isArray(row.coredon_project_versions) ? row.coredon_project_versions : [],
-    files: Array.isArray(row.coredon_project_files) ? row.coredon_project_files : [],
-    disputes: Array.isArray(row.coredon_project_disputes) ? row.coredon_project_disputes : [],
+    revisions: related.revisions,
+    versions:  related.versions,
+    files: related.files.map((f: any) => ({
+      ...f,
+      url: `${process.env.SUPABASE_URL}/storage/v1/object/public/project-files/${f.project_id}/${encodeURIComponent(f.name)}`,
+    })),
+    disputes: related.disputes,
   };
 }
 
@@ -32,6 +37,25 @@ function serializeClient(row: any): CoredonClient {
     ...row,
     outstanding: parseFloat(row.outstanding) || 0,
     created_at: toStr(row.created_at),
+  };
+}
+
+// Fetch all related rows for a set of project IDs in parallel
+async function fetchRelated(projectIds: string[]) {
+  if (projectIds.length === 0) return { revisions: [], versions: [], files: [], disputes: [] };
+
+  const [r, v, f, d] = await Promise.all([
+    supabase.from('coredon_project_revisions').select('*').in('project_id', projectIds),
+    supabase.from('coredon_project_versions').select('*').in('project_id', projectIds),
+    supabase.from('coredon_project_files').select('*').in('project_id', projectIds),
+    supabase.from('coredon_project_disputes').select('*').in('project_id', projectIds),
+  ]);
+
+  return {
+    revisions: r.data ?? [],
+    versions:  v.data ?? [],
+    files:     f.data ?? [],
+    disputes:  d.data ?? [],
   };
 }
 
@@ -49,18 +73,37 @@ export async function fetchAllProjects(): Promise<Project[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select(`
-        *,
-        coredon_project_revisions(*),
-        coredon_project_versions(*),
-        coredon_project_files(*),
-        coredon_project_disputes(*)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map(serializeProject);
+
+    if (error) throw new Error(error.message || JSON.stringify(error));
+
+    const projects = data ?? [];
+    const ids = projects.map((p: any) => p.id as string);
+    const related = await fetchRelated(ids);
+
+    // Group related rows by project_id
+    const byId = (rows: any[]) =>
+      rows.reduce((acc: Record<string, any[]>, row) => {
+        (acc[row.project_id] ??= []).push(row);
+        return acc;
+      }, {});
+
+    const revMap  = byId(related.revisions);
+    const verMap  = byId(related.versions);
+    const fileMap = byId(related.files);
+    const dispMap = byId(related.disputes);
+
+    return projects.map((p: any) =>
+      serializeProject(p, {
+        revisions: revMap[p.id]  ?? [],
+        versions:  verMap[p.id]  ?? [],
+        files:     fileMap[p.id] ?? [],
+        disputes:  dispMap[p.id] ?? [],
+      })
+    );
   } catch (error) {
-    console.error('fetchAllProjects error:', error);
+    console.error('fetchAllProjects error:', error instanceof Error ? error.message : JSON.stringify(error));
     return [];
   }
 }
@@ -69,19 +112,17 @@ export async function fetchProjectById(id: string): Promise<Project | null> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select(`
-        *,
-        coredon_project_revisions(*),
-        coredon_project_versions(*),
-        coredon_project_files(*),
-        coredon_project_disputes(*)
-      `)
+      .select('*')
       .eq('id', id)
       .single();
-    if (error) throw error;
-    return data ? serializeProject(data) : null;
+
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    if (!data) return null;
+
+    const related = await fetchRelated([id]);
+    return serializeProject(data, related);
   } catch (error) {
-    console.error('fetchProjectById error:', error);
+    console.error('fetchProjectById error:', error instanceof Error ? error.message : JSON.stringify(error));
     return null;
   }
 }
@@ -92,10 +133,11 @@ export async function fetchAllClients(): Promise<CoredonClient[]> {
       .from('coredon_clients')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) throw error;
+
+    if (error) throw new Error(error.message || JSON.stringify(error));
     return (data ?? []).map(serializeClient);
   } catch (error) {
-    console.error('fetchAllClients error:', error);
+    console.error('fetchAllClients error:', error instanceof Error ? error.message : JSON.stringify(error));
     return [];
   }
 }

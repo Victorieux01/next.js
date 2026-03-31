@@ -69,6 +69,7 @@ input::placeholder,textarea::placeholder{color:var(--text-muted);}
 #content{flex:1;min-width:0;overflow-y:auto;max-height:100vh;position:relative;}
 .page{padding:36px 40px 48px;}
 .fade-in{animation:fu 0.22s ease both;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 @keyframes fu{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
 @keyframes mi{from{opacity:0;transform:translateY(12px) scale(0.98);}to{opacity:1;transform:translateY(0) scale(1);}}
 

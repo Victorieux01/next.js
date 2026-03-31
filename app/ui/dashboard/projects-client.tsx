@@ -18,8 +18,11 @@ function Badge({ status }: { status: string }) {
 }
 
 function Avatar({ project }: { project: Project }) {
+  const isDispute = project.status === 'Dispute';
+  const bg    = isDispute ? '#FEE2E2' : project.color + '22';
+  const color = isDispute ? '#EF4444' : project.color;
   return (
-    <div style={{ width: 34, height: 34, borderRadius: 10, background: project.color + '22', color: project.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+    <div style={{ width: 34, height: 34, borderRadius: 10, background: bg, color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, transition: 'background 0.2s, color 0.2s' }}>
       {project.initials}
     </div>
   );
@@ -96,7 +99,6 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
 
         <div className="tbl-header">
           <span className="tbl-col" style={{ flex: 1 }}>Client</span>
-          <span className="tbl-col hide-m" style={{ flex: 2 }}>Description</span>
           <span className="tbl-col" style={{ flex: 1 }}>Status</span>
           <span className="tbl-col" style={{ flex: 1, textAlign: 'right' }}>Amount</span>
         </div>
@@ -110,9 +112,15 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
           >
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
               <Avatar project={p} />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+                {p.description && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.description}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="hide-m" style={{ flex: 2, fontSize: 13, color: 'var(--text-secondary)' }}>{p.description}</div>
             <div style={{ flex: 1 }}><Badge status={p.status} /></div>
             <div style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: 14 }}>{fmt(p.amount)}</div>
           </div>

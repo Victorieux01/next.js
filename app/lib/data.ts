@@ -206,7 +206,8 @@ export async function fetchFilteredCustomers(query: string) {
         total_invoices: invoices.length,
         total_pending: formatCurrency(total_pending),
         total_paid: formatCurrency(total_paid),
-      } as CustomersTableType;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any as CustomersTableType;
     });
   } catch (err) {
     console.error('Database Error:', err);
