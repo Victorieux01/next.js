@@ -21,7 +21,7 @@ async function getUser(email: string): Promise<User | undefined> {
   }
 }
 
-export const { auth, signIn, signOut } = NextAuth({
+export const { auth, signIn, signOut, unstable_update } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
@@ -35,8 +35,15 @@ export const { auth, signIn, signOut } = NextAuth({
           const user = await getUser(email);
           if (!user) return null;
           const passwordsMatch = await bcrypt.compare(password, user.password);
+          if (!passwordsMatch) return null;
 
-          if (passwordsMatch) return user;
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            // Only pending if 2FA is fully set up (enabled)
+            twoFactorPending: user.totp_enabled === true,
+          };
         }
 
         console.log('Invalid credentials');

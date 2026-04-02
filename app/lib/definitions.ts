@@ -7,6 +7,8 @@ export type User = {
   name: string;
   email: string;
   password: string;
+  totp_secret: string | null;
+  totp_enabled: boolean;
 };
 
 export type Customer = {

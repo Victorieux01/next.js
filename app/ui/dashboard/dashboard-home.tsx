@@ -12,6 +12,10 @@ function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 }
 
+function parseReason(raw: string): { original: string } {
+  return { original: raw.split('\n\n── Internal Note')[0] ?? raw };
+}
+
 function Badge({ status }: { status: string }) {
   const dotColors: Record<string, string> = {
     Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444',
@@ -32,147 +36,134 @@ function Avatar({ project }: { project: Project }) {
   );
 }
 
-// ── Monthly Escrow Line Chart ──────────────────────────────────────────────
+
 function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Build earnData the same way as the earnings tab
+  const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const byKey: Record<string, { month: string; year: string; v: number }> = {};
+  projects.filter(p => p.status === 'Released' && p.released_date).forEach(p => {
+    const d = new Date(p.released_date!);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    if (!byKey[key]) byKey[key] = { month: moNames[d.getMonth()], year: String(d.getFullYear()), v: 0 };
+    byKey[key].v += p.amount;
+  });
+  const earnData = Object.keys(byKey).sort().map(k => ({ key: k, ...byKey[k] }));
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     el.innerHTML = '';
 
-    // Build cumulative daily data from funded projects' prepaid_date
-    const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-    // Group funded projects by month
-    const moFunded: Record<string, { events: Record<number, number>; name: string; year: number }> = {};
-    projects.filter(p => p.prepaid_date).forEach(p => {
-      const d = new Date(p.prepaid_date!);
-      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-      if (!moFunded[key]) moFunded[key] = { events: {}, name: moNames[d.getMonth()], year: d.getFullYear() };
-      const day = d.getDate();
-      moFunded[key].events[day] = (moFunded[key].events[day] || 0) + p.amount;
-    });
-
-    const lastMoKey = Object.keys(moFunded).sort().pop() || '';
-    const lastMo = moFunded[lastMoKey] || { events: {}, name: moNames[new Date().getMonth()], year: new Date().getFullYear() };
-    const releaseEvents = lastMo.events;
-
-    // Build raw cumulative
-    let c = 0;
-    const rawCum: number[] = new Array(31).fill(0);
-    for (let d = 1; d <= 30; d++) {
-      if (releaseEvents[d]) c += releaseEvents[d];
-      rawCum[d] = c;
-    }
-    const total = rawCum[30];
-
-    // Smooth S-curve around payment days
+    // Cumulative daily points across all months using smoothstep
     function smoothstep(t: number) { return t * t * (3 - 2 * t); }
-    const payDays = Object.keys(releaseEvents).map(Number);
-    const RAMP = 3;
-    const days: { day: number; v: number }[] = [];
-    for (let d = 1; d <= 30; d++) {
-      let inRamp = false;
-      for (const pd of payDays) {
-        if (d >= pd - RAMP && d <= pd + RAMP) {
-          inRamp = true;
-          const vBefore = rawCum[pd] - (releaseEvents[pd] || 0);
-          const vAfter = rawCum[pd];
-          const t = Math.max(0, Math.min(1, (d - (pd - RAMP)) / (RAMP * 2)));
-          days.push({ day: d, v: vBefore + smoothstep(t) * (vAfter - vBefore) });
-          break;
-        }
+    const dailyPts: { month: string; year: string; dayOfMonth: number; v: number }[] = [];
+    let cumTotal = 0;
+    earnData.forEach(mo => {
+      const prev = cumTotal;
+      for (let d = 0; d < 30; d++) {
+        const t = smoothstep(d / 29);
+        dailyPts.push({ month: mo.month, year: mo.year, dayOfMonth: d + 1, v: prev + mo.v * t });
       }
-      if (!inRamp) days.push({ day: d, v: rawCum[d] });
-    }
-
-    // Build SVG
-    const W = 300, H = 180, BOT = 20, TOP = 14, PAD = 10;
-    const cH = H - BOT - TOP;
-    const ns = 'http://www.w3.org/2000/svg';
+      cumTotal += mo.v;
+    });
+    const grandTotal = cumTotal;
 
     // Header
     const hdr = document.createElement('div');
     hdr.style.cssText = 'padding:16px 16px 0;';
     const lbl = document.createElement('div');
-    lbl.style.cssText = 'font-size:11px;font-weight:600;color:#64A8D8;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;';
-    lbl.textContent = 'Monthly Escrow';
+    lbl.style.cssText = 'font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;';
+    lbl.textContent = 'Total Earnings';
     const amtEl = document.createElement('div');
-    amtEl.style.cssText = 'font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#fff;line-height:1;';
-    amtEl.textContent = total === 0 ? '0\u00a0$' : fmt(total);
+    amtEl.style.cssText = 'font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#0F172A;line-height:1;';
+    amtEl.textContent = fmt(grandTotal);
     const dateEl = document.createElement('div');
-    dateEl.style.cssText = 'font-size:12px;color:#64A8D8;font-weight:500;margin-top:4px;min-height:18px;';
+    dateEl.style.cssText = 'font-size:12px;color:#0984E3;font-weight:500;margin-top:4px;min-height:18px;';
     hdr.appendChild(lbl); hdr.appendChild(amtEl); hdr.appendChild(dateEl);
     el.appendChild(hdr);
 
-    if (days.length === 0 || total === 0) {
+    if (dailyPts.length === 0 || grandTotal === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = 'padding:24px;text-align:center;font-size:12px;color:#64A8D8;';
-      empty.textContent = 'No escrow data this month';
+      empty.style.cssText = 'padding:24px;text-align:center;font-size:12px;color:#94A3B8;';
+      empty.textContent = 'No earnings yet';
       el.appendChild(empty);
       return;
     }
+
+    const W = 300, H = 180, BOT = 22, TOP = 14, PAD = 10;
+    const cH = H - BOT - TOP;
+    const ns = 'http://www.w3.org/2000/svg';
 
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svg.style.cssText = 'display:block;width:100%;';
 
-    // Gradient
     const defs = document.createElementNS(ns, 'defs');
     const grad = document.createElementNS(ns, 'linearGradient');
-    grad.setAttribute('id', 'mg_esc'); grad.setAttribute('x1','0'); grad.setAttribute('y1','0'); grad.setAttribute('x2','0'); grad.setAttribute('y2','1');
-    const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#3B82F6'); s1.setAttribute('stop-opacity','0.5');
-    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#1E3A5F'); s2.setAttribute('stop-opacity','0.05');
+    grad.setAttribute('id', 'dash_earn_grad');
+    grad.setAttribute('x1','0'); grad.setAttribute('y1','0'); grad.setAttribute('x2','0'); grad.setAttribute('y2','1');
+    const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#0984E3'); s1.setAttribute('stop-opacity','0.15');
+    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#ffffff'); s2.setAttribute('stop-opacity','0');
     grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
 
-    const maxV = total || 1;
-    const scX = (d: number) => PAD + (d - 1) / (days.length - 1) * (W - PAD * 2);
-    const scY = (v: number) => TOP + cH * (1 - v / maxV);
-    const pts = days.map(d => [scX(d.day), scY(d.v)]);
+    const maxV = grandTotal || 1;
+    const ePts = dailyPts.map((_, i) => [
+      PAD + i / (dailyPts.length - 1) * (W - PAD * 2),
+      TOP + cH * (1 - dailyPts[i].v / maxV),
+    ]);
 
-    function bez(pts: number[][]): string {
-      if (pts.length < 2) return '';
-      let path = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const dx = pts[i+1][0] - pts[i][0];
-        const dy = Math.abs(pts[i+1][1] - pts[i][1]);
-        const t = dy < 0.5 ? 0.499 : 0.45;
-        const cp1x = pts[i][0] + dx*t, cp1y = pts[i][1];
-        const cp2x = pts[i+1][0] - dx*t, cp2y = pts[i+1][1];
-        path += ` C${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${pts[i+1][0].toFixed(2)},${pts[i+1][1].toFixed(2)}`;
+    function bez(ps: number[][]): string {
+      if (ps.length < 2) return '';
+      let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
+      for (let i = 0; i < ps.length - 1; i++) {
+        const dx = ps[i+1][0] - ps[i][0], t = 0.45;
+        const cp1x = ps[i][0] + dx*t, cp1y = ps[i][1];
+        const cp2x = ps[i+1][0] - dx*t, cp2y = ps[i+1][1];
+        path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
       }
       return path;
     }
 
-    const linePath = bez(pts);
-    const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(2)},${H-BOT} L${pts[0][0].toFixed(2)},${H-BOT} Z`;
+    const linePath = bez(ePts);
+    const areaPath = linePath + ` L${ePts[ePts.length-1][0].toFixed(1)},${H-BOT} L${ePts[0][0].toFixed(1)},${H-BOT} Z`;
 
-    const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#mg_esc)');
+    const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#dash_earn_grad)');
     svg.appendChild(area);
     const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
-    line.setAttribute('stroke','#3B82F6'); line.setAttribute('stroke-width','2.5'); line.setAttribute('stroke-linecap','round');
+    line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
     svg.appendChild(line);
 
-    // X-axis labels
-    [1,5,10,15,20,25,30].forEach((d, li, arr) => {
-      const x = PAD + li/(arr.length-1)*(W-PAD*2);
+    // Month labels
+    if (earnData.length > 1) {
+      earnData.forEach((mo, m) => {
+        const x = PAD + m / (earnData.length - 1) * (W - PAD * 2);
+        const lbl2 = document.createElementNS(ns,'text');
+        lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 6));
+        lbl2.setAttribute('text-anchor', m === 0 ? 'start' : m === earnData.length - 1 ? 'end' : 'middle');
+        lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
+        lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
+        lbl2.textContent = mo.month;
+        svg.appendChild(lbl2);
+      });
+    } else if (earnData.length === 1) {
       const lbl2 = document.createElementNS(ns,'text');
-      lbl2.setAttribute('x', x.toFixed(2)); lbl2.setAttribute('y', String(H-5));
-      lbl2.setAttribute('text-anchor', li===0?'start':li===arr.length-1?'end':'middle');
-      lbl2.setAttribute('font-size','9'); lbl2.setAttribute('fill','#4A7BA8'); lbl2.setAttribute('font-weight','600');
+      lbl2.setAttribute('x', String(W / 2)); lbl2.setAttribute('y', String(H - 6));
+      lbl2.setAttribute('text-anchor','middle');
+      lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
       lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-      lbl2.textContent = 'D' + String(d).padStart(2,'0');
+      lbl2.textContent = earnData[0].month + ' ' + earnData[0].year;
       svg.appendChild(lbl2);
-    });
+    }
 
     // Hover tracker
-    const DOT_R = 4;
+    const DOT_R = 3;
     const vl = document.createElementNS(ns,'line');
-    vl.setAttribute('stroke','#3B82F6'); vl.setAttribute('stroke-width','1.5'); vl.style.display='none';
+    vl.setAttribute('stroke','#0984E3'); vl.setAttribute('stroke-width','1'); vl.setAttribute('stroke-dasharray','3 2'); vl.style.display='none';
     svg.appendChild(vl);
     const dot = document.createElementNS(ns,'circle'); dot.setAttribute('r', String(DOT_R));
-    dot.setAttribute('fill','#0F1629'); dot.setAttribute('stroke','#3B82F6'); dot.setAttribute('stroke-width','2'); dot.style.display='none';
+    dot.setAttribute('fill','#fff'); dot.setAttribute('stroke','#0984E3'); dot.setAttribute('stroke-width','2'); dot.style.display='none';
     svg.appendChild(dot);
     const ov = document.createElementNS(ns,'rect');
     ov.setAttribute('x','0'); ov.setAttribute('y','0'); ov.setAttribute('width',String(W)); ov.setAttribute('height',String(H-BOT));
@@ -184,27 +175,27 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
       const ctm = svg.getScreenCTM(); if (!ctm) return;
       const mx = pt.matrixTransform(ctm.inverse()).x;
       let best = 0, bestD = Infinity;
-      pts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
-      const cx = pts[best][0], cy = pts[best][1];
-      vl.setAttribute('x1', cx.toFixed(2)); vl.setAttribute('y1', (cy+DOT_R).toFixed(2));
-      vl.setAttribute('x2', cx.toFixed(2)); vl.setAttribute('y2', String(H-BOT));
-      dot.setAttribute('cx', cx.toFixed(2)); dot.setAttribute('cy', cy.toFixed(2));
+      ePts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
+      const cx = ePts[best][0], cy = ePts[best][1];
+      vl.setAttribute('x1', cx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
+      vl.setAttribute('x2', cx.toFixed(1)); vl.setAttribute('y2', String(H-BOT));
+      dot.setAttribute('cx', cx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
       vl.style.display=''; dot.style.display='';
-      amtEl.textContent = fmt(days[best].v);
-      dateEl.textContent = days[best].day + ' ' + lastMo.name + ' ' + lastMo.year;
+      amtEl.textContent = fmt(dailyPts[best].v);
+      dateEl.textContent = dailyPts[best].dayOfMonth + ' ' + dailyPts[best].month + ' ' + dailyPts[best].year;
     });
     ov.addEventListener('mouseleave', () => {
       vl.style.display='none'; dot.style.display='none';
-      amtEl.textContent = fmt(total); dateEl.textContent='';
+      amtEl.textContent = fmt(grandTotal); dateEl.textContent = '';
     });
 
     el.appendChild(svg);
-  }, [projects]);
+  }, [earnData]);
 
   return (
     <div
       ref={containerRef}
-      style={{ background: '#0F1629', borderRadius: 12, border: '1px solid #1E3A5F', overflow: 'hidden' }}
+      style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}
     />
   );
 }
@@ -292,7 +283,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
 export default function DashboardHome({ projects }: Props) {
   const router = useRouter();
 
-  const escrow  = projects.filter(p => p.status === 'Funded').reduce((a, b) => a + b.amount, 0);
+  const escrow   = projects.filter(p => p.status === 'Funded').reduce((a, b) => a + b.amount, 0);
   const released = projects.filter(p => p.status === 'Released').reduce((a, b) => a + b.amount, 0);
   const pending  = projects.filter(p => p.status === 'Pending').reduce((a, b) => a + b.amount, 0);
 
@@ -309,6 +300,54 @@ export default function DashboardHome({ projects }: Props) {
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
   const PER = 7;
+
+  // More Action dropdown + modals
+  const [ddOpen,    setDdOpen]    = useState(false);
+  const [modal,     setModal]     = useState<null | 'reminder' | 'dispute'>(null);
+  const ddRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ddRef.current && !ddRef.current.contains(e.target as Node)) setDdOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Reminder modal state — pending projects
+  const pendingProjects = projects.filter(p => p.status === 'Pending');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [reminderSent, setReminderSent] = useState(false);
+
+  function openReminder() {
+    setSelected(new Set(pendingProjects.map(p => p.id)));
+    setReminderSent(false);
+    setModal('reminder');
+    setDdOpen(false);
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function sendReminders() {
+    const targets = pendingProjects.filter(p => selected.has(p.id));
+    targets.forEach(p => console.log(`[Email] Reminder sent to ${p.email} for project "${p.name}" (${fmt(p.amount)})`));
+    setReminderSent(true);
+  }
+
+  // Dispute report data
+  const allDisputes = projects.flatMap(p =>
+    (p.disputes || []).map(d => ({ ...d, projectName: p.name, projectAmount: p.amount }))
+  );
+  const openDisputes     = allDisputes.filter(d => d.status === 'Open');
+  const resolvedDisputes = allDisputes.filter(d => d.status === 'Resolved');
+  const atRisk           = openDisputes.reduce((s, d) => s + d.projectAmount, 0);
 
   const filtered = sorted
     .filter(p => filter === 'All' || p.status === filter)
@@ -339,8 +378,199 @@ export default function DashboardHome({ projects }: Props) {
       {/* All Projects header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700 }}>All Projects</h2>
-        <button className="btn">More Action ▾</button>
+
+        {/* More Action dropdown */}
+        <div ref={ddRef} style={{ position: 'relative' }}>
+          <button className="btn" onClick={() => setDdOpen(o => !o)}>
+            More Action ▾
+          </button>
+          {ddOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+              minWidth: 200, zIndex: 200, overflow: 'hidden',
+              animation: 'fu 0.13s ease both',
+            }}>
+              <button
+                onClick={openReminder}
+                style={{ width: '100%', padding: '11px 16px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.12 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.85a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                Send Reminder
+              </button>
+              <div style={{ height: 1, background: 'var(--border-light)', margin: '0 12px' }} />
+              <button
+                onClick={() => { setModal('dispute'); setDdOpen(false); }}
+                style={{ width: '100%', padding: '11px 16px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Dispute Report
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* ── Send Reminder Modal ── */}
+      {modal === 'reminder' && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal-box" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Send Reminders</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Select the clients you want to notify about their unfunded projects.
+                </div>
+              </div>
+              <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, marginLeft: 12, flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {reminderSent ? (
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Reminders Sent!</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
+                  {selected.size} reminder{selected.size !== 1 ? 's' : ''} sent successfully.
+                </div>
+                <button className="btn-outline" onClick={() => setModal(null)}>Close</button>
+              </div>
+            ) : (
+              <>
+                {pendingProjects.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>
+                    No pending projects to remind.
+                  </div>
+                ) : (
+                  <>
+                    {/* Select all */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--bg)', marginBottom: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={selected.size === pendingProjects.length}
+                        onChange={() => setSelected(selected.size === pendingProjects.length ? new Set() : new Set(pendingProjects.map(p => p.id)))}
+                        style={{ width: 16, height: 16, accentColor: '#0984E3' }}
+                      />
+                      Select all ({pendingProjects.length})
+                    </label>
+
+                    {/* Project list */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, maxHeight: 260, overflowY: 'auto' }}>
+                      {pendingProjects.map(p => (
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${selected.has(p.id) ? '#0984E3' : 'var(--border)'}`, background: selected.has(p.id) ? '#EFF6FF' : 'var(--surface)', cursor: 'pointer', transition: 'all 0.12s' }}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(p.id)}
+                            onChange={() => toggleSelect(p.id)}
+                            style={{ width: 16, height: 16, accentColor: '#0984E3', flexShrink: 0 }}
+                          />
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: p.color + '22', color: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                            {p.initials}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{fmt(p.amount)}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <button
+                      className="btn"
+                      disabled={selected.size === 0}
+                      style={{ width: '100%', padding: '12px', fontSize: 14, opacity: selected.size === 0 ? 0.5 : 1 }}
+                      onClick={sendReminders}
+                    >
+                      Send {selected.size > 0 ? selected.size : ''} Reminder{selected.size !== 1 ? 's' : ''}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Dispute Report Modal ── */}
+      {modal === 'dispute' && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal-box" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>Dispute Report</div>
+              <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Stats row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
+              <div style={{ background: '#FEF2F2', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#EF4444' }}>{openDisputes.length}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#EF4444', marginTop: 2 }}>Open</div>
+              </div>
+              <div style={{ background: '#DCFCE7', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#16A34A' }}>{resolvedDisputes.length}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#16A34A', marginTop: 2 }}>Resolved</div>
+              </div>
+              <div style={{ background: '#FEF3C7', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#D97706' }}>{fmt(atRisk)}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#D97706', marginTop: 2 }}>At Risk</div>
+              </div>
+            </div>
+
+            {/* Dispute history */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>
+              Dispute History
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+              {allDisputes.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>No disputes recorded.</div>
+              )}
+              {allDisputes.map((d, i) => {
+                const isOpen = d.status === 'Open';
+                const { original } = parseReason(d.reason);
+                return (
+                  <div key={i} style={{ borderRadius: 10, border: `1px solid ${isOpen ? '#FECACA' : 'var(--border-light)'}`, borderLeft: `4px solid ${isOpen ? '#EF4444' : '#16A34A'}`, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700 }}>{d.projectName}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: isOpen ? '#EF4444' : '#16A34A', background: isOpen ? '#FEF2F2' : '#DCFCE7', borderRadius: 20, padding: '3px 8px' }}>
+                        {d.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, lineHeight: 1.4 }}>{original}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Opened: {d.date}{d.resolved_date ? `  ·  Resolved: ${d.resolved_date}` : ''}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(d.projectAmount)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button className="btn-outline" style={{ width: '100%', marginTop: 16, padding: '11px' }} onClick={() => setModal(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2-column layout: left (stats + table) / right (charts) */}
       <div className="l2" style={{ gap: 16, alignItems: 'flex-start' }}>

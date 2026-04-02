@@ -1,13 +1,7 @@
-import { auth } from '@/auth';
-import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import LoginForm from '@/app/ui/login-form';
+import RegisterForm from '@/app/ui/register-form';
 
-export default async function Page() {
-  const session = await auth();
-  if (session?.user && !(session as any).twoFactorPending) redirect('/dashboard');
-  if ((session as any)?.twoFactorPending) redirect('/login/2fa');
-
+export default function RegisterPage() {
   return (
     <main style={{
       minHeight: '100vh',
@@ -18,6 +12,7 @@ export default async function Page() {
       padding: '24px 16px',
     }}>
       <div style={{ width: '100%', maxWidth: 400 }}>
+        {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', marginBottom: 32 }}>
           <div style={{
             width: 40, height: 40,
@@ -32,11 +27,12 @@ export default async function Page() {
           <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>Coredon</span>
         </div>
 
+        {/* Card */}
         <div className="card" style={{ padding: 32 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>Welcome back</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28 }}>Sign in to your account to continue.</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>Create your account</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 28 }}>Get started with Coredon today.</p>
           <Suspense>
-            <LoginForm />
+            <RegisterForm />
           </Suspense>
         </div>
       </div>
