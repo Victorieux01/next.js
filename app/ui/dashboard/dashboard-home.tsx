@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 interface Props {
   projects: Project[];
   clients: CoredonClient[];
+  user?: { name?: string | null };
 }
 
 function fmt(n: number): string {
@@ -226,6 +227,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
     return { ...slice, dash, gap, strokeDashoffset };
   }).filter(Boolean);
 
+  
   return (
     <div className="card" style={{ padding: 24, flex: 1 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -280,7 +282,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
 }
 
 // ── Dashboard Home ─────────────────────────────────────────────────────────
-export default function DashboardHome({ projects }: Props) {
+export default function DashboardHome({ projects, user }: Props) {
   const router = useRouter();
 
   const escrow   = projects.filter(p => p.status === 'Funded').reduce((a, b) => a + b.amount, 0);
@@ -371,7 +373,7 @@ export default function DashboardHome({ projects }: Props) {
 
       {/* Welcome */}
       <div className="welcome-section">
-        <h1>Welcome back, Henri.</h1>
+        <h1>Welcome back, {user?.name?.split(' ')[0] ?? 'there'}.</h1>
         <p>Here&apos;s what&apos;s happening with your projects.</p>
       </div>
 
