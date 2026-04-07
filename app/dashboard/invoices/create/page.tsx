@@ -1,16 +1,19 @@
 import Form from '@/app/ui/invoices/create-form';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
-
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Invoices',
 };
- 
+
 export default async function Page() {
-  const customers = await fetchCustomers();
- 
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+  const customers = await fetchCustomers(session.user.id);
+
   return (
     <main>
       <Breadcrumbs

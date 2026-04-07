@@ -22,7 +22,9 @@ const CreateInvoice = FormSchema.omit({ id: true, date: true });
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
 export async function deleteInvoice(id: string) {
-  await supabase.from('invoices').delete().eq('id', id);
+  const session = await auth();
+  if (!session?.user?.id) return;
+  await supabase.from('invoices').delete().eq('id', id).eq('user_id', session.user.id);
   revalidatePath('/dashboard/invoices');
 }
 
@@ -49,6 +51,9 @@ export async function createInvoice(prevState: State, formData: FormData) {
     };
   }
 
+  const session = await auth();
+  if (!session?.user?.id) return { message: 'Not authenticated.' };
+
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
@@ -59,6 +64,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
       amount: amountInCents,
       status,
       date,
+      user_id: session.user.id,
     });
     if (error) throw error;
   } catch (error) {
@@ -84,6 +90,9 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
     };
   }
 
+  const session = await auth();
+  if (!session?.user?.id) return { message: 'Not authenticated.' };
+
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
 
@@ -92,7 +101,7 @@ export async function updateInvoice(id: string, prevState: State, formData: Form
       customer_id: customerId,
       amount: amountInCents,
       status,
-    }).eq('id', id);
+    }).eq('id', id).eq('user_id', session.user.id);
     if (error) throw error;
   } catch (error) {
     console.error(error);
@@ -198,15 +207,10 @@ export async function registerUser(
 
   const hashedPassword = await bcrypt.hash(password, 12);
 
-  const { generateSecret } = await import('./totp');
-  const totpSecret = generateSecret();
-
   const { error } = await supabase.from('users').insert({
     name,
     email,
     password: hashedPassword,
-    totp_secret: totpSecret,
-    totp_enabled: false,
   });
 
   if (error) {
@@ -215,7 +219,7 @@ export async function registerUser(
   }
 
   try {
-    await signIn('credentials', { email, password, redirectTo: '/register/2fa-setup' });
+    await signIn('credentials', { email, password, redirectTo: '/dashboard' });
   } catch (error) {
     if (error instanceof AuthError) {
       return { message: 'Account created but sign-in failed. Please log in.' };

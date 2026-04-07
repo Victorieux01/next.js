@@ -14,9 +14,15 @@ export async function GET() {
         id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         email TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL
+        password TEXT NOT NULL,
+        totp_secret TEXT,
+        totp_enabled BOOLEAN NOT NULL DEFAULT FALSE
       )
     `;
+
+    // Add TOTP columns to existing tables that predate this migration
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS customers (

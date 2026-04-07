@@ -6,18 +6,23 @@ import { lusitana } from '@/app/ui/fonts';
 import { Suspense } from 'react';
 import { InvoicesTableSkeleton } from '@/app/ui/skeletons';
 import { fetchInvoicesPages } from '@/app/lib/data';
- 
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
+
 export default async function Page(props: {
   searchParams?: Promise<{
     query?: string;
     page?: string;
   }>;
 }) {
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) || 1;
-  const totalPages = await fetchInvoicesPages(query);
- 
+  const totalPages = await fetchInvoicesPages(query, session.user.id);
+
   return (
     <div className="w-full">
       <div className="flex w-full items-center justify-between">

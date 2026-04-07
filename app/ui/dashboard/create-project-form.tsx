@@ -1,7 +1,134 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/lib/coredon-actions';
+
+// ── Custom Date Picker ───────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function DatePicker({ value, onChange, hasError }: {
+  value: string; onChange: (v: string) => void; hasError?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const today = new Date();
+  const parsed = value ? new Date(value + 'T00:00:00') : null;
+  const [view, setView] = useState(() => {
+    const d = parsed ?? today;
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  function prevMonth() {
+    setView(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 });
+  }
+  function nextMonth() {
+    setView(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
+  }
+
+  const firstDay = new Date(view.year, view.month, 1).getDay();
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+
+  function selectDay(day: number) {
+    const mm = String(view.month + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    onChange(`${view.year}-${mm}-${dd}`);
+    setOpen(false);
+  }
+
+  const display = parsed
+    ? parsed.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
+      {/* Input trigger */}
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'var(--surface,#fff)', border: `1px solid ${hasError ? '#EF4444' : 'var(--border-light,#F2F4F7)'}`,
+        borderRadius: 10, padding: '11px 14px', fontSize: 13, cursor: 'pointer',
+        color: display ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'inherit',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        ...(open ? { borderColor: '#4285F4', boxShadow: '0 0 0 3px rgba(66,133,244,0.12)' } : {}),
+      }}>
+        <span>{display || 'Select a date'}</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      </button>
+
+      {/* Dropdown calendar */}
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 999,
+          background: 'var(--surface,#fff)', border: '1px solid var(--border,#EAECF0)',
+          borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          padding: '16px', width: 272,
+        }}>
+          {/* Month nav */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <button type="button" onClick={prevMonth} style={{ width: 28, height: 28, border: '1px solid var(--border-light)', borderRadius: 8, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+              {MONTHS[view.month]} {view.year}
+            </span>
+            <button type="button" onClick={nextMonth} style={{ width: 28, height: 28, border: '1px solid var(--border-light)', borderRadius: 8, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+
+          {/* Day headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 }}>
+            {DAYS.map(d => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '2px 0' }}>{d}</div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {Array.from({ length: firstDay }).map((_, i) => <div key={'e' + i} />)}
+            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+              const isToday = today.getFullYear() === view.year && today.getMonth() === view.month && today.getDate() === day;
+              const isSelected = parsed && parsed.getFullYear() === view.year && parsed.getMonth() === view.month && parsed.getDate() === day;
+              return (
+                <button key={day} type="button" onClick={() => selectDay(day)} style={{
+                  width: '100%', aspectRatio: '1', border: 'none', borderRadius: 8, cursor: 'pointer',
+                  fontSize: 12, fontWeight: isSelected ? 700 : 400,
+                  background: isSelected ? '#4285F4' : 'transparent',
+                  color: isSelected ? '#fff' : isToday ? '#4285F4' : 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  outline: isToday && !isSelected ? '1.5px solid #4285F4' : 'none',
+                  transition: 'background 0.1s',
+                }}
+                  onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg,#F9FAFB)'; }}
+                  onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                >{day}</button>
+              );
+            })}
+          </div>
+
+          {/* Clear */}
+          {value && (
+            <button type="button" onClick={() => { onChange(''); setOpen(false); }} style={{
+              marginTop: 12, width: '100%', background: 'none', border: 'none', borderTop: '1px solid var(--border-light)',
+              paddingTop: 10, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit',
+            }}>Clear</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface Step1 {
@@ -114,22 +241,8 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
         </div>
       </div>
 
-      {/* Line items */}
-      <div style={{ borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', paddingTop: 14, paddingBottom: 14, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 20px', marginBottom: 10 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 70, textAlign: 'right' }}>Qty</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', minWidth: 80, textAlign: 'right' }}>Total</div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 20px' }}>
-          <div style={{ color: s1.description ? '#111' : '#d1d5db', fontWeight: 500, fontSize: 12 }}>{s1.description || 'Project description'}</div>
-          <div style={{ minWidth: 70, textAlign: 'right', color: '#6b7280' }}>1</div>
-          <div style={{ minWidth: 80, textAlign: 'right', fontWeight: 700, color: amount ? '#111' : '#d1d5db' }}>{amount ? fmt(amount) : '—'}</div>
-        </div>
-      </div>
-
       {/* Total */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24, paddingTop: 16, borderTop: '1px solid #e5e7eb' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
             <span>Subtotal</span><span>{amount ? fmt(amount) : '—'}</span>
@@ -239,15 +352,15 @@ export default function CreateProjectForm() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="Start Date" required error={errors.start_date}>
-                <input style={errInp(!!errors.start_date)} type="date" value={s1.start_date} onChange={e => upd1('start_date', e.target.value)} />
+                <DatePicker value={s1.start_date} onChange={v => upd1('start_date', v)} hasError={!!errors.start_date} />
               </Field>
               <Field label="Deadline (Contract End)" required error={errors.end_date}>
-                <input style={errInp(!!errors.end_date)} type="date" value={s1.end_date} onChange={e => upd1('end_date', e.target.value)} />
+                <DatePicker value={s1.end_date} onChange={v => upd1('end_date', v)} hasError={!!errors.end_date} />
               </Field>
             </div>
 
             <Field label="Expected Delivery Date" required error={errors.expected_date}>
-              <input style={errInp(!!errors.expected_date)} type="date" value={s1.expected_date} onChange={e => upd1('expected_date', e.target.value)} />
+              <DatePicker value={s1.expected_date} onChange={v => upd1('expected_date', v)} hasError={!!errors.expected_date} />
             </Field>
 
             <Field label="Amount (CAD)" required error={errors.amount}>

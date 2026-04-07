@@ -255,12 +255,14 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
           />
         ))}
         {/* Center text */}
-        <text x={CX} y={CY - 6} textAnchor="middle" fontSize="13" fontWeight="800" fill="#0F172A" fontFamily="'Plus Jakarta Sans',sans-serif">
+        <text x={CX} y={grand > 0 ? CY - 6 : CY + 6} textAnchor="middle" fontSize="13" fontWeight="800" fill="#0F172A" fontFamily="'Plus Jakarta Sans',sans-serif">
           {fmt(grand)}
         </text>
-        <text x={CX} y={CY + 13} textAnchor="middle" fontSize="11" fontWeight="600" fill="#00C896" fontFamily="'Plus Jakarta Sans',sans-serif">
-          ↑ 4.6%
-        </text>
+        {grand > 0 && (
+          <text x={CX} y={CY + 13} textAnchor="middle" fontSize="11" fontWeight="600" fill="#00C896" fontFamily="'Plus Jakarta Sans',sans-serif">
+            ↑ 4.6%
+          </text>
+        )}
       </svg>
 
       {slices.map((slice, i) => (
@@ -591,9 +593,11 @@ export default function DashboardHome({ projects, user }: Props) {
                 <div className="stat-card-inner">
                   <div className="stat-label">{label}</div>
                   <div className="stat-val">{fmt(val)}</div>
-                  <div className="stat-delta" style={{ color: up ? '#16A34A' : '#DC2626' }}>
-                    {up ? '↑' : '↓'} {delta} Last month
-                  </div>
+                  {val > 0 && (
+                    <div className="stat-delta" style={{ color: up ? '#16A34A' : '#DC2626' }}>
+                      {up ? '↑' : '↓'} {delta} Last month
+                    </div>
+                  )}
                 </div>
                 <div className="stat-bar" style={{ background: color }} />
               </div>

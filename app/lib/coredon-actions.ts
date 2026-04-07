@@ -2,7 +2,8 @@
 import supabase from './supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { sendDisputeRejectionEmail } from './sendgrid';
+import { sendDisputeRejectionEmail, sendContractEmail } from './sendgrid';
+import { auth } from '@/auth';
 
 const COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
 
@@ -10,8 +11,19 @@ function getInitials(name: string): string {
   return name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
 }
 
+async function getUserSession(): Promise<{ id: string; name: string }> {
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+  return { id: session.user.id, name: session.user.name ?? 'Provider' };
+}
+
+async function getUserId(): Promise<string> {
+  return (await getUserSession()).id;
+}
+
 // ── PROJECTS ──
 export async function createProject(formData: FormData) {
+  const { id: userId, name: editorName } = await getUserSession();
   const name           = formData.get('name') as string;
   const email          = formData.get('email') as string;
   const description    = formData.get('description') as string;
@@ -24,46 +36,69 @@ export async function createProject(formData: FormData) {
 
   const initials = getInitials(name);
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+  const finalDescription = contractNotes
+    ? description + (description ? '\n\n' : '') + contractNotes
+    : description;
 
-  await supabase.from('coredon_projects').insert({
-    name, email, description, amount, status: 'Pending', initials, color,
+  const { data: inserted } = await supabase.from('coredon_projects').insert({
+    user_id: userId,
+    name, email, description: finalDescription, amount, status: 'Pending', initials, color,
     start_date:     startDate    || null,
     end_date:       endDate      || null,
     expected_date:  expectedDate || null,
     prepaid_method: paymentMethod,
-    // store contract notes in description if provided
-    ...(contractNotes ? { description: description + (description ? '\n\n' : '') + contractNotes } : {}),
-  });
+  }).select('id').single();
+
+  // Send contract email to the client
+  if (inserted?.id && email) {
+    sendContractEmail({
+      clientEmail:  email,
+      clientName:   name,
+      editorName,
+      projectName:  name,
+      description:  finalDescription,
+      amount,
+      startDate:    startDate  || '',
+      deadline:     endDate    || '',
+      projectId:    inserted.id,
+      appUrl:       process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
+    }).catch(err => console.error('Contract email error:', err));
+  }
 
   revalidatePath('/dashboard/projects');
   redirect('/dashboard/projects');
 }
 
 export async function updateProjectStatus(id: string, status: string) {
-  await supabase.from('coredon_projects').update({ status }).eq('id', id);
+  const userId = await getUserId();
+  await supabase.from('coredon_projects').update({ status }).eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/projects');
   revalidatePath(`/dashboard/projects/${id}`);
 }
 
 export async function deleteProject(id: string) {
-  await supabase.from('coredon_projects').delete().eq('id', id);
+  const userId = await getUserId();
+  await supabase.from('coredon_projects').delete().eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/projects');
   redirect('/dashboard/projects');
 }
 
 export async function addRevision(projectId: string, note: string) {
+  await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_project_revisions').insert({ project_id: projectId, date, note });
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
 export async function addVersion(projectId: string, fileName: string) {
+  await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_project_versions').insert({ project_id: projectId, date, note: fileName });
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
 export async function openDispute(projectId: string, reason: string) {
+  await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   await Promise.all([
     supabase.from('coredon_project_disputes').insert({ project_id: projectId, reason, date, status: 'Open' }),
@@ -73,13 +108,13 @@ export async function openDispute(projectId: string, reason: string) {
 }
 
 export async function resolveDispute(disputeId: string, projectId: string, resolution: 'accept' | 'reject') {
+  await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   const status = resolution === 'accept' ? 'Resolved' : 'Rejected';
   const [, disputeRes] = await Promise.all([
     supabase.from('coredon_project_disputes').update({ status, resolved_date: date }).eq('id', disputeId),
     supabase.from('coredon_project_disputes').select('reason').eq('id', disputeId).single(),
   ]);
-  // Both accept and reject unfreeze the project (dispute is over)
   await supabase.from('coredon_projects').update({ status: 'Funded' }).eq('id', projectId);
   if (resolution === 'reject') {
     const { data: proj } = await supabase.from('coredon_projects').select('email, name').eq('id', projectId).single();
@@ -92,6 +127,7 @@ export async function resolveDispute(disputeId: string, projectId: string, resol
 }
 
 export async function addDisputeNote(disputeId: string, note: string, projectId: string) {
+  await getUserId();
   const { data } = await supabase.from('coredon_project_disputes').select('reason').eq('id', disputeId).single();
   const currentReason = data?.reason ?? '';
   const date = new Date().toISOString().slice(0, 10);
@@ -101,13 +137,15 @@ export async function addDisputeNote(disputeId: string, note: string, projectId:
 }
 
 export async function toggleProjectPin(id: string, pinned: boolean) {
-  await supabase.from('coredon_projects').update({ pinned }).eq('id', id);
+  const userId = await getUserId();
+  await supabase.from('coredon_projects').update({ pinned }).eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/projects');
   revalidatePath('/dashboard');
 }
 
 // ── CLIENTS ──
 export async function createClient(formData: FormData) {
+  const userId      = await getUserId();
   const company     = formData.get('company') as string;
   const name        = formData.get('name') as string;
   const email       = formData.get('email') as string;
@@ -117,6 +155,7 @@ export async function createClient(formData: FormData) {
   const outstanding = parseFloat(formData.get('outstanding') as string) || 0;
 
   await supabase.from('coredon_clients').insert({
+    user_id: userId,
     company, name, email, phone, address,
     note: note || 'New Client',
     outstanding,
@@ -125,6 +164,7 @@ export async function createClient(formData: FormData) {
 }
 
 export async function updateClient(id: string, formData: FormData) {
+  const userId      = await getUserId();
   const company     = formData.get('company') as string;
   const name        = formData.get('name') as string;
   const email       = formData.get('email') as string;
@@ -135,11 +175,12 @@ export async function updateClient(id: string, formData: FormData) {
 
   await supabase.from('coredon_clients').update({
     company, name, email, phone, address, note, outstanding,
-  }).eq('id', id);
+  }).eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/clients');
 }
 
 export async function deleteClient(id: string) {
-  await supabase.from('coredon_clients').delete().eq('id', id);
+  const userId = await getUserId();
+  await supabase.from('coredon_clients').delete().eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/clients');
 }

@@ -17,7 +17,9 @@
       "Bash(npx tsc:*)",
       "Bash(pnpm add:*)",
       "Bash(node -e \"const otplib = require\\('otplib'\\); console.log\\(Object.keys\\(otplib\\)\\)\")",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(node -e \"const m = require\\('otplib'\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(ls seed*)"
     ]
   }
 }

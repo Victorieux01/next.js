@@ -20,11 +20,12 @@ export async function fetchRevenue() {
   }
 }
 
-export async function fetchLatestInvoices() {
+export async function fetchLatestInvoices(userId: string) {
   try {
     const { data, error } = await supabase
       .from('invoices')
       .select('amount, id, customers(name, image_url, email)')
+      .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(5);
     if (error) throw error;
@@ -46,13 +47,13 @@ export async function fetchLatestInvoices() {
   }
 }
 
-export async function fetchCardData() {
+export async function fetchCardData(userId: string) {
   try {
     const [{ count: invoiceCount }, { count: customerCount }, { data: invoiceData }] =
       await Promise.all([
-        supabase.from('invoices').select('*', { count: 'exact', head: true }),
-        supabase.from('customers').select('*', { count: 'exact', head: true }),
-        supabase.from('invoices').select('amount, status'),
+        supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+        supabase.from('customers').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+        supabase.from('invoices').select('amount, status').eq('user_id', userId),
       ]);
 
     const paid = (invoiceData ?? [])
@@ -76,11 +77,12 @@ export async function fetchCardData() {
 
 const ITEMS_PER_PAGE = 6;
 
-export async function fetchFilteredInvoices(query: string, currentPage: number) {
+export async function fetchFilteredInvoices(query: string, currentPage: number, userId: string) {
   try {
     const { data, error } = await supabase
       .from('invoices')
       .select('id, amount, date, status, customers(name, email, image_url)')
+      .eq('user_id', userId)
       .order('date', { ascending: false });
     if (error) throw error;
 
@@ -118,11 +120,12 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
   }
 }
 
-export async function fetchInvoicesPages(query: string) {
+export async function fetchInvoicesPages(query: string, userId: string) {
   try {
     const { data, error } = await supabase
       .from('invoices')
       .select('amount, date, status, customers(name, email)')
+      .eq('user_id', userId)
       .order('date', { ascending: false });
     if (error) throw error;
 
@@ -147,12 +150,13 @@ export async function fetchInvoicesPages(query: string) {
   }
 }
 
-export async function fetchInvoiceById(id: string) {
+export async function fetchInvoiceById(id: string, userId: string) {
   try {
     const { data, error } = await supabase
       .from('invoices')
       .select('id, customer_id, amount, status')
       .eq('id', id)
+      .eq('user_id', userId)
       .single();
     if (error) throw error;
 
@@ -166,11 +170,12 @@ export async function fetchInvoiceById(id: string) {
   }
 }
 
-export async function fetchCustomers() {
+export async function fetchCustomers(userId: string) {
   try {
     const { data, error } = await supabase
       .from('customers')
       .select('id, name')
+      .eq('user_id', userId)
       .order('name', { ascending: true });
     if (error) throw error;
     return (data ?? []) as CustomerField[];
@@ -180,11 +185,12 @@ export async function fetchCustomers() {
   }
 }
 
-export async function fetchFilteredCustomers(query: string) {
+export async function fetchFilteredCustomers(query: string, userId: string) {
   try {
     const { data, error } = await supabase
       .from('customers')
       .select('id, name, email, image_url, invoices(amount, status)')
+      .eq('user_id', userId)
       .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
       .order('name', { ascending: true });
     if (error) throw error;

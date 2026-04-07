@@ -59,9 +59,9 @@ async function fetchRelated(projectIds: string[]) {
   };
 }
 
-export async function fetchDashboardData() {
+export async function fetchDashboardData(userId: string) {
   try {
-    const [projects, clients] = await Promise.all([fetchAllProjects(), fetchAllClients()]);
+    const [projects, clients] = await Promise.all([fetchAllProjects(userId), fetchAllClients(userId)]);
     return { projects, clients };
   } catch (error) {
     console.error('Dashboard data fetch error:', error);
@@ -69,11 +69,12 @@ export async function fetchDashboardData() {
   }
 }
 
-export async function fetchAllProjects(): Promise<Project[]> {
+export async function fetchAllProjects(userId: string): Promise<Project[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
       .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message || JSON.stringify(error));
@@ -108,12 +109,13 @@ export async function fetchAllProjects(): Promise<Project[]> {
   }
 }
 
-export async function fetchProjectById(id: string): Promise<Project | null> {
+export async function fetchProjectById(id: string, userId: string): Promise<Project | null> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
       .select('*')
       .eq('id', id)
+      .eq('user_id', userId)
       .single();
 
     if (error) throw new Error(error.message || JSON.stringify(error));
@@ -127,11 +129,12 @@ export async function fetchProjectById(id: string): Promise<Project | null> {
   }
 }
 
-export async function fetchAllClients(): Promise<CoredonClient[]> {
+export async function fetchAllClients(userId: string): Promise<CoredonClient[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_clients')
       .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message || JSON.stringify(error));

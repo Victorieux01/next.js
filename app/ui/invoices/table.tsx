@@ -1,5 +1,7 @@
 import { fetchFilteredInvoices } from '@/app/lib/data';
 import InvoicesTableClient from '@/app/ui/invoices/invoices-table-client';
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 
 export default async function InvoicesTable({
   query,
@@ -8,6 +10,8 @@ export default async function InvoicesTable({
   query: string;
   currentPage: number;
 }) {
-  const invoices = await fetchFilteredInvoices(query, currentPage);
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+  const invoices = await fetchFilteredInvoices(query, currentPage, session.user.id);
   return <InvoicesTableClient invoices={invoices} />;
 }

@@ -42,7 +42,7 @@ export const { auth, signIn, signOut, unstable_update } = NextAuth({
             name: user.name,
             email: user.email,
             // Only pending if 2FA is fully set up (enabled)
-            twoFactorPending: user.totp_enabled === true,
+            twoFactorPending: user.totp_enabled === true && !!user.totp_secret,
           };
         }
 
