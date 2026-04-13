@@ -148,6 +148,18 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
   }
 }
 
+export async function markProjectFundedByClient(id: string): Promise<void> {
+  try {
+    await supabase
+      .from('coredon_projects')
+      .update({ status: 'Funded', prepaid_date: new Date().toISOString().slice(0, 10) })
+      .eq('id', id)
+      .eq('status', 'Pending'); // only transitions from Pending → Funded
+  } catch (error) {
+    console.error('markProjectFundedByClient error:', error instanceof Error ? error.message : JSON.stringify(error));
+  }
+}
+
 export async function fetchUserSettings(userId: string): Promise<{ plan: string; phone: string; first_name: string; last_name: string } | null> {
   try {
     const { data } = await supabase
