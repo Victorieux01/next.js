@@ -2,11 +2,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Project, CoredonClient } from '@/app/lib/coredon-types';
 import { useRouter } from 'next/navigation';
+import { SettingsModal, type UserProfile } from '@/app/ui/dashboard/settings-client';
+import { getUserProfile } from '@/app/lib/coredon-actions';
 
 interface Props {
   projects: Project[];
   clients: CoredonClient[];
-  user?: { name?: string | null };
+  user?: { name?: string | null; email?: string | null };
 }
 
 function fmt(n: number): string {
@@ -78,7 +80,7 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     lbl.style.cssText = 'font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;';
     lbl.textContent = 'Total Earnings';
     const amtEl = document.createElement('div');
-    amtEl.style.cssText = 'font-size:28px;font-weight:800;letter-spacing:-0.04em;color:#0F172A;line-height:1;';
+    amtEl.style.cssText = 'font-size:28px;font-weight:800;letter-spacing:-0.04em;color:var(--text-primary);line-height:1;';
     amtEl.textContent = fmt(grandTotal);
     const dateEl = document.createElement('div');
     dateEl.style.cssText = 'font-size:12px;color:#0984E3;font-weight:500;margin-top:4px;min-height:18px;';
@@ -106,7 +108,7 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     grad.setAttribute('id', 'dash_earn_grad');
     grad.setAttribute('x1','0'); grad.setAttribute('y1','0'); grad.setAttribute('x2','0'); grad.setAttribute('y2','1');
     const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#0984E3'); s1.setAttribute('stop-opacity','0.15');
-    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#ffffff'); s2.setAttribute('stop-opacity','0');
+    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','transparent'); s2.setAttribute('stop-opacity','0');
     grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
 
     const maxV = grandTotal || 1;
@@ -202,10 +204,10 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
 }
 
 // ── Escrow Breakdown Donut Chart ───────────────────────────────────────────
-function DonutChart({ funded, released, pending }: { funded: number; released: number; pending: number }) {
+function DonutChart({ funded, released, pending, dispute }: { funded: number; released: number; pending: number; dispute: number }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const total = funded + released + pending || 1;
-  const grand = funded + released + pending;
+  const total = funded + released + pending + dispute || 1;
+  const grand = funded + released + pending + dispute;
 
   const R = 68, CX = 100, CY = 100;
   const circumference = 2 * Math.PI * R;
@@ -214,6 +216,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
     { label: 'Funded', val: funded, color: '#00C896' },
     { label: 'Released', val: released, color: '#0984E3' },
     { label: 'Pending', val: pending, color: '#CBD5E1' },
+    { label: 'Dispute', val: dispute, color: '#EF4444' },
   ];
 
   let offset = circumference * 0.25; // start at top
@@ -237,7 +240,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
 
       <svg viewBox="0 0 200 200" width="180" height="180" style={{ display: 'block', margin: '4px auto 16px' }}>
         {/* Background ring */}
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="#F1F5F9" strokeWidth="22" />
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-light)" strokeWidth="22" />
         {/* Slices */}
         {circles.map((s) => s && (
           <circle
@@ -255,7 +258,7 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
           />
         ))}
         {/* Center text */}
-        <text x={CX} y={grand > 0 ? CY - 6 : CY + 6} textAnchor="middle" fontSize="13" fontWeight="800" fill="#0F172A" fontFamily="'Plus Jakarta Sans',sans-serif">
+        <text x={CX} y={grand > 0 ? CY - 6 : CY + 6} textAnchor="middle" fontSize="13" fontWeight="800" fill="var(--text-primary)" fontFamily="'Plus Jakarta Sans',sans-serif">
           {fmt(grand)}
         </text>
         {grand > 0 && (
@@ -286,10 +289,39 @@ function DonutChart({ funded, released, pending }: { funded: number; released: n
 // ── Dashboard Home ─────────────────────────────────────────────────────────
 export default function DashboardHome({ projects, user }: Props) {
   const router = useRouter();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsUser, setSettingsUser] = useState<UserProfile | null>(null);
 
-  const escrow   = projects.filter(p => p.status === 'Funded').reduce((a, b) => a + b.amount, 0);
-  const released = projects.filter(p => p.status === 'Released').reduce((a, b) => a + b.amount, 0);
-  const pending  = projects.filter(p => p.status === 'Pending').reduce((a, b) => a + b.amount, 0);
+  const rawName = user?.name ?? '';
+  const initials = rawName.split(' ').map(w => w[0] ?? '').filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+
+  async function openSettings() {
+    setSettingsOpen(true);
+    if (!settingsUser) {
+      const profile = await getUserProfile();
+      setSettingsUser({
+        name:      rawName,
+        email:     user?.email ?? '',
+        plan:      profile.plan,
+        phone:     profile.phone,
+        firstName: profile.firstName || rawName.split(' ')[0] || '',
+        lastName:  profile.lastName  || rawName.split(' ').slice(1).join(' ') || '',
+      });
+    }
+  }
+
+  const escrow       = projects.filter(p => p.status === 'Funded').reduce((a, b) => a + b.amount, 0);
+  const released     = projects.filter(p => p.status === 'Released').reduce((a, b) => a + b.amount, 0);
+  const pending      = projects.filter(p => p.status === 'Pending').reduce((a, b) => a + b.amount, 0);
+  const dispute      = projects.filter(p => p.status === 'Dispute').reduce((a, b) => a + b.amount, 0);
+  const activeEscrow = escrow;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const nextDeadlineProject = projects
+    .filter(p => p.status !== 'Released' && (p.end_date || p.expected_date))
+    .map(p => ({ name: p.name, date: (p.end_date || p.expected_date)! }))
+    .filter(p => p.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null;
 
   const sortOrder: Record<string, number> = { Dispute: 0, Funded: 1, Pending: 2, Released: 3 };
   const sorted = [...projects].sort((a, b) => {
@@ -370,8 +402,16 @@ export default function DashboardHome({ projects, user }: Props) {
           </svg>
           <span className="tb-notif-dot" />
         </button>
-        <button className="tb-avatar">H</button>
+        <button className="tb-avatar" onClick={openSettings} title="Settings">{initials}</button>
       </div>
+
+      {settingsOpen && settingsUser && (
+        <SettingsModal
+          user={settingsUser}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={u => setSettingsUser(u)}
+        />
+      )}
 
       {/* Welcome */}
       <div className="welcome-section">
@@ -584,24 +624,59 @@ export default function DashboardHome({ projects, user }: Props) {
 
           {/* Stat cards */}
           <div className="stat-row" style={{ marginBottom: 0 }}>
-            {[
-              { label: 'Total Escrow', val: escrow, color: '#00C896', delta: '+4.2%', up: true },
-              { label: 'Total Released', val: released, color: '#0984E3', delta: '+1.8%', up: true },
-              { label: 'Pending', val: pending, color: '#94A3B8', delta: '-2.1%', up: false },
-            ].map(({ label, val, color, delta, up }) => (
-              <div key={label} className="stat-card">
-                <div className="stat-card-inner">
-                  <div className="stat-label">{label}</div>
-                  <div className="stat-val">{fmt(val)}</div>
-                  {val > 0 && (
-                    <div className="stat-delta" style={{ color: up ? '#16A34A' : '#DC2626' }}>
-                      {up ? '↑' : '↓'} {delta} Last month
-                    </div>
-                  )}
-                </div>
-                <div className="stat-bar" style={{ background: color }} />
+            {/* Active Escrow */}
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
               </div>
-            ))}
+              <div className="stat-card-inner">
+                <div className="stat-label">Active Escrow</div>
+                <div className="stat-val">{fmt(activeEscrow)}</div>
+                {activeEscrow > 0 && <div className="stat-delta" style={{ color: '#16A34A' }}>Funded</div>}
+              </div>
+              <div className="stat-bar" style={{ background: '#00C896' }} />
+            </div>
+
+            {/* Pending — middle */}
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </div>
+              <div className="stat-card-inner">
+                <div className="stat-label">Pending</div>
+                <div className="stat-val">{fmt(pending)}</div>
+              </div>
+              <div className="stat-bar" style={{ background: '#94A3B8' }} />
+            </div>
+
+            {/* Next Deadline */}
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+              </div>
+              <div className="stat-card-inner">
+                <div className="stat-label">Next Deadline</div>
+                <div className="stat-val" style={{ fontSize: 17, letterSpacing: '-0.01em' }}>
+                  {nextDeadlineProject ? nextDeadlineProject.date : '—'}
+                </div>
+                {nextDeadlineProject && (
+                  <div className="stat-delta" style={{ color: '#0984E3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {nextDeadlineProject.name}
+                  </div>
+                )}
+              </div>
+              <div className="stat-bar" style={{ background: '#F59E0B' }} />
+            </div>
           </div>
 
           {/* Projects table */}
@@ -666,7 +741,7 @@ export default function DashboardHome({ projects, user }: Props) {
         {/* RIGHT COLUMN */}
         <div className="hide-m" style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 16, flexShrink: 0 }}>
           <MonthlyEscrowChart projects={projects} />
-          <DonutChart funded={escrow} released={released} pending={pending} />
+          <DonutChart funded={escrow} released={released} pending={pending} dispute={dispute} />
         </div>
 
       </div>

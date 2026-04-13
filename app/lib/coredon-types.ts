@@ -19,7 +19,7 @@ export interface ProjectFile {
   project_id: string;
   name: string;
   date: string;
-  type: 'pdf' | 'video' | 'doc';
+  type: 'pdf' | 'video' | 'image' | 'doc';
   url?: string;
 }
 

@@ -54,11 +54,12 @@ function DatePicker({ value, onChange, hasError }: {
       {/* Input trigger */}
       <button type="button" onClick={() => setOpen(o => !o)} style={{
         width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: 'var(--surface,#fff)', border: `1px solid ${hasError ? '#EF4444' : 'var(--border-light,#F2F4F7)'}`,
+        background: 'var(--surface,#fff)',
+        border: `1px solid ${open ? '#4285F4' : hasError ? '#EF4444' : 'var(--border-light,#F2F4F7)'}`,
         borderRadius: 10, padding: '11px 14px', fontSize: 13, cursor: 'pointer',
         color: display ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'inherit',
         transition: 'border-color 0.15s, box-shadow 0.15s',
-        ...(open ? { borderColor: '#4285F4', boxShadow: '0 0 0 3px rgba(66,133,244,0.12)' } : {}),
+        boxShadow: open ? '0 0 0 3px rgba(66,133,244,0.12)' : 'none',
       }}>
         <span>{display || 'Select a date'}</span>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>

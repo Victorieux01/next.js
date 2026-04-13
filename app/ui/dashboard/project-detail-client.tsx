@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote } from '@/app/lib/coredon-actions';
+import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus } from '@/app/lib/coredon-actions';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -329,6 +329,22 @@ export default function ProjectDetailClient({ project: p }: Props) {
         <div className="card" style={{ width: 240, padding: 28, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Actions</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+            {p.status === 'Funded' && (
+              <button
+                className="btn-action"
+                style={{ background: '#0984E3', color: '#fff', border: 'none', fontWeight: 700 }}
+                disabled={submitting}
+                onClick={async () => {
+                  if (!confirm('Release payment to the provider? This cannot be undone.')) return;
+                  setSubmitting(true);
+                  await updateProjectStatus(p.id, 'Released');
+                  setSubmitting(false);
+                  router.refresh();
+                }}
+              >
+                Release Payment
+              </button>
+            )}
             <button
               className="btn-action"
               disabled={isDispute}
@@ -393,7 +409,7 @@ export default function ProjectDetailClient({ project: p }: Props) {
         })}
       </div>
 
-      <UploadSection projectId={p.id} versions={p.versions || []} />
+      <UploadSection projectId={p.id} versions={p.versions || []} clientEmail={p.email} clientName={p.name} projectName={p.name} disabled={isDispute} />
       <FilesSection files={p.files || []} />
 
       {/* ── Dispute Step 1 Modal: Reason ── */}
@@ -669,12 +685,21 @@ function DisputesSection({
 }
 
 // ── Upload Your Work ────────────────────────────────────────────────────────
-function UploadSection({ projectId, versions }: { projectId: string; versions: { id: string; note: string; date: string }[] }) {
+function UploadSection({ projectId, versions, clientEmail, clientName, projectName, disabled }: {
+  projectId: string;
+  versions: { id: string; note: string; date: string }[];
+  clientEmail: string;
+  clientName: string;
+  projectName: string;
+  disabled?: boolean;
+}) {
   const router    = useRouter();
   const inputRef  = useRef<HTMLInputElement>(null);
-  const [dragging,  setDragging]  = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
+  const [dragging,   setDragging]   = useState(false);
+  const [uploading,  setUploading]  = useState(false);
+  const [sending,    setSending]    = useState(false);
+  const [notifState, setNotifState] = useState<'idle' | 'sent' | 'error'>('idle');
+  const [error,      setError]      = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -699,43 +724,62 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
         Upload your deliverable so the client can review and approve it.
       </div>
 
-      <div
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-        onClick={() => inputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragging ? '#4285F4' : 'var(--border-light)'}`,
+      {disabled ? (
+        <div style={{
+          border: '2px dashed #FECACA',
           borderRadius: 12,
           padding: '40px 24px',
           textAlign: 'center',
-          cursor: 'pointer',
-          background: dragging ? 'rgba(66,133,244,0.05)' : 'var(--bg)',
-          transition: 'all 0.15s',
+          background: '#FEF2F2',
           marginBottom: 24,
-        }}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept=".mp4,.mov,.zip,.pdf"
-          style={{ display: 'none' }}
-          onChange={e => handleFiles(e.target.files)}
-        />
-        <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
+        }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>Uploads disabled during dispute</div>
+          <div style={{ fontSize: 12, color: '#F87171', marginTop: 4 }}>All uploads are frozen until the dispute is resolved.</div>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          {uploading ? 'Uploading…' : <><span>Drop your file here or </span><span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
+      ) : (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+          onClick={() => inputRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragging ? '#4285F4' : 'var(--border-light)'}`,
+            borderRadius: 12,
+            padding: '40px 24px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragging ? 'rgba(66,133,244,0.05)' : 'var(--bg)',
+            transition: 'all 0.15s',
+            marginBottom: 24,
+          }}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept=".mp4,.mov,.zip,.pdf,.png,.jpg,.jpeg,.webp"
+            style={{ display: 'none' }}
+            onChange={e => handleFiles(e.target.files)}
+          />
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {uploading ? 'Uploading…' : <><span>Drop your file here or </span><span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>.mp4, .mov, .zip, .pdf, .png, .jpg, .webp — max 10 GB</div>
+          {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>.mp4, .mov, .zip, .pdf — max 10 GB</div>
-        {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
-      </div>
+      )}
 
       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
         Uploaded Deliverables
@@ -763,6 +807,45 @@ function UploadSection({ projectId, versions }: { projectId: string; versions: {
           <span style={{ fontSize: 12, fontWeight: 600, color: '#4285F4' }}>Uploaded</span>
         </div>
       ))}
+
+      {/* Notify client button */}
+      <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border-light)' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+          Ready for the client to review? Send them a watermarked preview link.
+        </div>
+        <button
+          onClick={async () => {
+            setSending(true);
+            setNotifState('idle');
+            const result = await sendPreviewNotification(projectId, clientEmail, clientName, projectName);
+            setSending(false);
+            setNotifState(result.success ? 'sent' : 'error');
+          }}
+          disabled={sending}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: notifState === 'sent' ? '#00C896' : '#4285F4',
+            color: '#fff', border: 'none', borderRadius: 10,
+            padding: '11px 20px', fontSize: 13, fontWeight: 700,
+            cursor: sending ? 'not-allowed' : 'pointer',
+            opacity: sending ? 0.7 : 1, fontFamily: 'inherit',
+            transition: 'background 0.15s',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4l16 8-16 8V4z"/>
+          </svg>
+          {sending ? 'Sending…' : notifState === 'sent' ? 'Preview sent!' : 'Notify client — Send preview'}
+        </button>
+        {notifState === 'error' && (
+          <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>Failed to send. Please try again.</div>
+        )}
+        {notifState === 'sent' && (
+          <div style={{ fontSize: 12, color: '#00C896', marginTop: 8 }}>
+            Preview email sent to {clientEmail}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -788,18 +871,32 @@ function FilesSection({ files }: { files: { id: string; name: string; date: stri
   }
 
   function fileIcon(type: string) {
-    const isPdf = type === 'pdf';
+    if (type === 'pdf') return (
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+    );
+    if (type === 'image') return (
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+        </svg>
+      </div>
+    );
+    if (type === 'video') return (
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>
+      </div>
+    );
     return (
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: isPdf ? '#FEF2F2' : '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {isPdf ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-        )}
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
       </div>
     );
   }

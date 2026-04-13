@@ -1,6 +1,4 @@
 import { Resend } from 'resend';
-import fs from 'fs';
-import path from 'path';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -27,50 +25,105 @@ export async function sendContractEmail({
   projectId: string;
   appUrl: string;
 }) {
-  const templatePath = path.join(process.cwd(), 'contract.html');
-  let html = fs.readFileSync(templatePath, 'utf-8');
+  const portalUrl = `${appUrl}/client/${projectId}`;
+  const fmtAmount = amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 
-  // Calculate duration in days
-  let duration = '—';
-  if (startDate && deadline) {
-    const ms = new Date(deadline).getTime() - new Date(startDate).getTime();
-    const days = Math.round(ms / (1000 * 60 * 60 * 24));
-    duration = days > 0 ? `${days} day${days !== 1 ? 's' : ''}` : '—';
-  }
+  await resend.emails.send({
+    from: 'Coredon <contracts@coredon.app>',
+    to: clientEmail,
+    subject: `New Contract — ${projectName}`,
+    html: `<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head><meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/></head>
+<body style="background-color:#0a0a0a;margin:0;padding:0;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" align="center">
+    <tr><td style="padding:48px 20px">
+      <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;margin:0 auto">
+        <tr><td>
+          <p style="font-size:22px;font-weight:700;color:#fff;letter-spacing:0.18em;text-transform:uppercase;text-align:center;margin:0 0 32px">COREDON</p>
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#161616;border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden">
+            <tr><td style="padding:32px">
+              <p style="margin:0 0 6px;font-size:12px;color:#555;letter-spacing:0.08em;text-transform:uppercase">New Project Contract</p>
+              <p style="margin:0 0 20px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.02em">${projectName}</p>
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px"/>
+              <p style="margin:0 0 20px;font-size:14px;color:#888;line-height:1.6">
+                Hi ${clientName},<br/><br/>
+                <strong style="color:#aaa">${editorName}</strong> has created a new project contract for you on Coredon.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px">
+                ${description ? `<tr><td style="padding:0 0 12px"><p style="margin:0;font-size:11px;color:#555;letter-spacing:0.06em;text-transform:uppercase">Description</p><p style="margin:4px 0 0;font-size:14px;color:#ccc;line-height:1.5">${description.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p></td></tr>` : ''}
+                <tr>
+                  <td style="padding:12px 0;border-top:1px solid rgba(255,255,255,0.06)">
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                      <tr>
+                        <td style="width:33%"><p style="margin:0;font-size:11px;color:#555;letter-spacing:0.06em;text-transform:uppercase">Amount</p><p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#00C896">${fmtAmount}</p></td>
+                        ${startDate ? `<td style="width:33%"><p style="margin:0;font-size:11px;color:#555;letter-spacing:0.06em;text-transform:uppercase">Start Date</p><p style="margin:4px 0 0;font-size:14px;color:#ccc">${startDate}</p></td>` : ''}
+                        ${deadline ? `<td style="width:33%"><p style="margin:0;font-size:11px;color:#555;letter-spacing:0.06em;text-transform:uppercase">Deadline</p><p style="margin:4px 0 0;font-size:14px;color:#ccc">${deadline}</p></td>` : ''}
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <a href="${portalUrl}" style="display:block;background:#1a8cff;color:#fff;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Your Project Portal →</a>
+              <p style="margin:16px 0 0;font-size:12px;color:#444;text-align:center;line-height:1.5">
+                This link always shows the latest status of your project.
+              </p>
+            </td></tr>
+          </table>
+          <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
 
-  const contractNumber = `CTR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 90000 + 10000))}`;
-  const fmtDate = (d: string) =>
-    d ? new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
-  const fmtAmount = (n: number) =>
-    n.toLocaleString('fr-CA', { minimumFractionDigits: 2 }) + ' $';
-
-  const vars: Record<string, string> = {
-    amount:           fmtAmount(amount),
-    initiated_date:   fmtDate(new Date().toISOString().slice(0, 10)),
-    contract_number:  contractNumber,
-    project_id:       `PRJ-${projectId.slice(0, 8).toUpperCase()}`,
-    deadline:         fmtDate(deadline),
-    project_name:     projectName,
-    client_name:      clientName,
-    editor_name:      editorName,
-    description:      description,
-    duration:         duration,
-    agreement_url:    `${appUrl}/dashboard/projects/${projectId}`,
-    details_url:      `${appUrl}/dashboard/projects/${projectId}`,
-    payment_url:      `${appUrl}/dashboard/projects/${projectId}`,
-  };
-
-  for (const [key, value] of Object.entries(vars)) {
-    html = html.replaceAll(`{{${key}}}`, value)
-               .replaceAll(`{{ ${key} }}`, value)
-               .replaceAll(`{{  ${key}  }}`, value);
-  }
-
+export async function sendPreviewEmail({
+  clientEmail,
+  clientName,
+  projectName,
+  previewUrl,
+}: {
+  clientEmail: string;
+  clientName: string;
+  projectName: string;
+  previewUrl: string;
+}) {
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: clientEmail,
-    subject: `New Contract — ${projectName}`,
-    html,
+    subject: `Your project preview is ready — ${projectName}`,
+    html: `<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head><meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/></head>
+<body style="background-color:#0a0a0a;margin:0;padding:0;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" align="center">
+    <tr><td style="padding:48px 20px">
+      <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;margin:0 auto">
+        <tr><td>
+          <p style="font-size:22px;font-weight:700;color:#fff;letter-spacing:0.18em;text-transform:uppercase;text-align:center;margin:0 0 32px">COREDON</p>
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#161616;border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden">
+            <tr><td style="padding:32px">
+              <p style="margin:0 0 6px;font-size:12px;color:#555;letter-spacing:0.08em;text-transform:uppercase">Project Preview Ready</p>
+              <p style="margin:0 0 20px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.02em">${projectName}</p>
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px"/>
+              <p style="margin:0 0 24px;font-size:14px;color:#888;line-height:1.6">
+                Hi ${clientName},<br/><br/>
+                Your provider has uploaded a new version of your project. Click below to preview it.<br/><br/>
+                <strong style="color:#aaa">Note:</strong> <span style="color:#666">This preview is watermarked. The final delivery will be clean.</span>
+              </p>
+              <a href="${previewUrl}" style="display:block;background:#1a8cff;color:#fff;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Preview →</a>
+            </td></tr>
+          </table>
+          <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
   });
 }
 

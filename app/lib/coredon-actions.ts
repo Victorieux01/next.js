@@ -2,7 +2,7 @@
 import supabase from './supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { sendDisputeRejectionEmail, sendContractEmail } from './sendgrid';
+import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail } from './sendgrid';
 import { auth } from '@/auth';
 
 const COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
@@ -48,6 +48,38 @@ export async function createProject(formData: FormData) {
     expected_date:  expectedDate || null,
     prepaid_method: paymentMethod,
   }).select('id').single();
+
+  // Add client to clients tab if not already present (match by email)
+  const { data: existingClient } = await supabase
+    .from('coredon_clients')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('email', email)
+    .single();
+
+  if (!existingClient) {
+    await supabase.from('coredon_clients').insert({
+      user_id:     userId,
+      name,
+      email,
+      company:     name,
+      outstanding: amount,
+      note:        'Added automatically from project',
+    });
+    revalidatePath('/dashboard/clients');
+  } else {
+    // Bump outstanding by this project's amount
+    const { data: cl } = await supabase
+      .from('coredon_clients')
+      .select('outstanding')
+      .eq('id', existingClient.id)
+      .single();
+    await supabase
+      .from('coredon_clients')
+      .update({ outstanding: (cl?.outstanding ?? 0) + amount })
+      .eq('id', existingClient.id);
+    revalidatePath('/dashboard/clients');
+  }
 
   // Send contract email to the client
   if (inserted?.id && email) {
@@ -115,7 +147,8 @@ export async function resolveDispute(disputeId: string, projectId: string, resol
     supabase.from('coredon_project_disputes').update({ status, resolved_date: date }).eq('id', disputeId),
     supabase.from('coredon_project_disputes').select('reason').eq('id', disputeId).single(),
   ]);
-  await supabase.from('coredon_projects').update({ status: 'Funded' }).eq('id', projectId);
+  const projectStatus = resolution === 'reject' ? 'Released' : 'Funded';
+  await supabase.from('coredon_projects').update({ status: projectStatus }).eq('id', projectId);
   if (resolution === 'reject') {
     const { data: proj } = await supabase.from('coredon_projects').select('email, name').eq('id', projectId).single();
     if (proj) {
@@ -183,4 +216,64 @@ export async function deleteClient(id: string) {
   const userId = await getUserId();
   await supabase.from('coredon_clients').delete().eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard/clients');
+}
+
+// ── USER PROFILE ──
+export async function getUserProfile(): Promise<{ plan: string; phone: string; firstName: string; lastName: string }> {
+  const userId = await getUserId();
+  try {
+    const { data } = await supabase
+      .from('coredon_user_settings')
+      .select('plan, phone, first_name, last_name')
+      .eq('user_id', userId)
+      .single();
+    return {
+      plan:      data?.plan       ?? 'free',
+      phone:     data?.phone      ?? '',
+      firstName: data?.first_name ?? '',
+      lastName:  data?.last_name  ?? '',
+    };
+  } catch {
+    return { plan: 'free', phone: '', firstName: '', lastName: '' };
+  }
+}
+
+export async function updateUserProfile(data: {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  plan: string;
+}) {
+  const userId = await getUserId();
+  const name = [data.firstName, data.lastName].filter(Boolean).join(' ');
+  await Promise.all([
+    name ? supabase.from('users').update({ name }).eq('id', userId) : Promise.resolve(),
+    supabase.from('coredon_user_settings').upsert({
+      user_id: userId,
+      plan: data.plan || 'free',
+      phone: data.phone || '',
+      first_name: data.firstName || '',
+      last_name: data.lastName || '',
+    }, { onConflict: 'user_id' }),
+  ]);
+  revalidatePath('/dashboard/earnings');
+}
+
+// ── Preview Notification ──────────────────────────────────────────────────────
+export async function sendPreviewNotification(
+  projectId: string,
+  clientEmail: string,
+  clientName: string,
+  projectName: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await getUserId(); // ensure authenticated
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app';
+    const previewUrl = `${appUrl}/client/${projectId}`;
+    await sendPreviewEmail({ clientEmail, clientName, projectName, previewUrl });
+    return { success: true };
+  } catch (err) {
+    console.error('sendPreviewNotification error:', err);
+    return { success: false, error: 'Failed to send preview email.' };
+  }
 }

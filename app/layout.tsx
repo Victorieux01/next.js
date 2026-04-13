@@ -14,7 +14,16 @@ const jakarta = Plus_Jakarta_Sans({
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Apply saved theme before first paint to avoid flash */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            var t = localStorage.getItem('coredon-theme');
+            if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+          } catch(e) {}
+        `}} />
+      </head>
       <body className={jakarta.className}>{children}</body>
     </html>
   );

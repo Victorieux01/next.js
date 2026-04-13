@@ -1,104 +1,84 @@
-// Loading animation
-const shimmer =
-  'before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent';
+function Sk({ w, h, r = 8, style }: { w?: number | string; h: number; r?: number; style?: React.CSSProperties }) {
+  return <div className="sk-block" style={{ width: w ?? '100%', height: h, borderRadius: r, flexShrink: 0, ...style }} />;
+}
 
 export function CardSkeleton() {
   return (
-    <div
-      className={`${shimmer} relative overflow-hidden rounded-xl bg-gray-100 p-2 shadow-sm`}
-    >
-      <div className="flex p-4">
-        <div className="h-5 w-5 rounded-md bg-gray-200" />
-        <div className="ml-2 h-6 w-16 rounded-md bg-gray-200 text-sm font-medium" />
-      </div>
-      <div className="flex items-center justify-center truncate rounded-xl bg-white px-4 py-8">
-        <div className="h-7 w-20 rounded-md bg-gray-200" />
-      </div>
+    <div style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+      <Sk w={80} h={12} r={6} />
+      <Sk w={100} h={26} r={8} />
+      <Sk w={60} h={11} r={5} />
     </div>
   );
 }
 
-export function CardsSkeleton() {
+function TableRowSk() {
   return (
-    <>
-      <CardSkeleton />
-      <CardSkeleton />
-      <CardSkeleton />
-      <CardSkeleton />
-    </>
-  );
-}
-
-export function RevenueChartSkeleton() {
-  return (
-    <div className={`${shimmer} relative w-full overflow-hidden md:col-span-4`}>
-      <div className="mb-4 h-8 w-36 rounded-md bg-gray-100" />
-      <div className="rounded-xl bg-gray-100 p-4">
-        <div className="sm:grid-cols-13 mt-0 grid h-[410px] grid-cols-12 items-end gap-2 rounded-md bg-white p-4 md:gap-4" />
-        <div className="flex items-center pb-2 pt-6">
-          <div className="h-5 w-5 rounded-full bg-gray-200" />
-          <div className="ml-2 h-4 w-20 rounded-md bg-gray-200" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function InvoiceSkeleton() {
-  return (
-    <div className="flex flex-row items-center justify-between border-b border-gray-100 py-4">
-      <div className="flex items-center">
-        <div className="mr-2 h-8 w-8 rounded-full bg-gray-200" />
-        <div className="min-w-0">
-          <div className="h-5 w-40 rounded-md bg-gray-200" />
-          <div className="mt-2 h-4 w-12 rounded-md bg-gray-200" />
-        </div>
-      </div>
-      <div className="mt-2 h-4 w-12 rounded-md bg-gray-200" />
-    </div>
-  );
-}
-
-export function LatestInvoicesSkeleton() {
-  return (
-    <div
-      className={`${shimmer} relative flex w-full flex-col overflow-hidden md:col-span-4`}
-    >
-      <div className="mb-4 h-8 w-36 rounded-md bg-gray-100" />
-      <div className="flex grow flex-col justify-between rounded-xl bg-gray-100 p-4">
-        <div className="bg-white px-6">
-          <InvoiceSkeleton />
-          <InvoiceSkeleton />
-          <InvoiceSkeleton />
-          <InvoiceSkeleton />
-          <InvoiceSkeleton />
-        </div>
-        <div className="flex items-center pb-2 pt-6">
-          <div className="h-5 w-5 rounded-full bg-gray-200" />
-          <div className="ml-2 h-4 w-20 rounded-md bg-gray-200" />
-        </div>
-      </div>
+    <div style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderTop: '1px solid var(--border-light)', gap: 12 }}>
+      <Sk w={34} h={34} r={10} style={{ flexShrink: 0 }} />
+      <Sk w="35%" h={14} r={6} />
+      <Sk w="30%" h={13} r={6} style={{ marginLeft: 'auto' }} />
+      <Sk w={60} h={13} r={6} />
+      <Sk w={50} h={20} r={20} />
     </div>
   );
 }
 
 export default function DashboardSkeleton() {
   return (
-    <>
-      <div
-        className={`${shimmer} relative mb-4 h-8 w-36 overflow-hidden rounded-md bg-gray-100`}
-      />
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <CardSkeleton />
+    <div style={{ padding: '36px 40px 48px' }}>
+      {/* Welcome */}
+      <div style={{ marginBottom: 32 }}>
+        <Sk w={260} h={28} r={8} />
+        <Sk w={200} h={14} r={6} style={{ marginTop: 10 }} />
+      </div>
+
+      {/* Stat cards row */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
         <CardSkeleton />
         <CardSkeleton />
         <CardSkeleton />
       </div>
-      <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-4 lg:grid-cols-8">
-        <RevenueChartSkeleton />
-        <LatestInvoicesSkeleton />
+
+      {/* 2-column layout */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        {/* Left: projects table */}
+        <div style={{ flex: 1, minWidth: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Sk w={80} h={16} r={6} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Sk w={100} h={30} r={8} />
+              <Sk w={80} h={30} r={8} />
+            </div>
+          </div>
+          <div style={{ padding: '8px 20px', borderTop: '1px solid var(--border-light)', borderBottom: '1px solid var(--border-light)', background: 'var(--bg)', display: 'flex', gap: 12 }}>
+            <Sk w="30%" h={11} r={4} />
+            <Sk w="25%" h={11} r={4} />
+            <Sk w="15%" h={11} r={4} />
+            <Sk w="10%" h={11} r={4} style={{ marginLeft: 'auto' }} />
+          </div>
+          {[1,2,3,4,5].map(i => <TableRowSk key={i} />)}
+        </div>
+
+        {/* Right: charts */}
+        <div style={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflow: 'hidden' }}>
+            <Sk w={120} h={14} r={6} style={{ marginBottom: 12 }} />
+            <Sk h={180} r={8} />
+          </div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
+            <Sk w={140} h={14} r={6} style={{ marginBottom: 16 }} />
+            <Sk w={180} h={180} r={90} style={{ margin: '0 auto 16px' }} />
+            {[1,2,3,4].map(i => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border-light)' }}>
+                <Sk w={70} h={13} r={5} />
+                <Sk w={50} h={13} r={5} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 

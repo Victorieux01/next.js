@@ -19,7 +19,15 @@
       "Bash(node -e \"const otplib = require\\('otplib'\\); console.log\\(Object.keys\\(otplib\\)\\)\")",
       "Bash(node -e ':*)",
       "Bash(node -e \"const m = require\\('otplib'\\); console.log\\(Object.keys\\(m\\)\\)\")",
-      "Bash(ls seed*)"
+      "Bash(ls seed*)",
+      "mcp__vercel__list_teams",
+      "mcp__vercel__list_projects",
+      "mcp__vercel__get_project",
+      "Bash(npx vercel:*)",
+      "Bash(curl -s http://localhost:3000/dashboard/projects)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\('@stripe/connect-js'\\); console.log\\('ok'\\)\")",
+      "Bash(ls:*)"
     ]
   }
 }

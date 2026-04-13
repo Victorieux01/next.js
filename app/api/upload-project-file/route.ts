@@ -14,9 +14,10 @@ export async function POST(req: Request) {
     }
 
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    const fileType: 'pdf' | 'video' | 'doc' =
+    const fileType: 'pdf' | 'video' | 'image' | 'doc' =
       ext === 'pdf' ? 'pdf' :
-      ['mp4', 'mov', 'avi', 'mkv'].includes(ext) ? 'video' : 'doc';
+      ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) ? 'video' :
+      ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext) ? 'image' : 'doc';
 
     const storagePath = `${projectId}/${file.name}`;
 

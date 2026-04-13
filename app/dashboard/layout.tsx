@@ -9,7 +9,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   if ((session as any).twoFactorPending) redirect('/login/2fa');
 
   const user = {
-    name: session.user.name ?? '',
+    name:  session.user.name  ?? '',
     email: session.user.email ?? '',
   };
 

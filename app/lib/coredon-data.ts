@@ -129,6 +129,38 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
   }
 }
 
+export async function fetchProjectByIdPublic(id: string): Promise<Project | null> {
+  try {
+    const { data, error } = await supabase
+      .from('coredon_projects')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    if (!data) return null;
+
+    const related = await fetchRelated([id]);
+    return serializeProject(data, related);
+  } catch (error) {
+    console.error('fetchProjectByIdPublic error:', error instanceof Error ? error.message : JSON.stringify(error));
+    return null;
+  }
+}
+
+export async function fetchUserSettings(userId: string): Promise<{ plan: string; phone: string; first_name: string; last_name: string } | null> {
+  try {
+    const { data } = await supabase
+      .from('coredon_user_settings')
+      .select('plan, phone, first_name, last_name')
+      .eq('user_id', userId)
+      .single();
+    return data as { plan: string; phone: string; first_name: string; last_name: string } | null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchAllClients(userId: string): Promise<CoredonClient[]> {
   try {
     const { data, error } = await supabase
