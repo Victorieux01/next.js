@@ -2,6 +2,7 @@
 import { useState, useTransition, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/lib/coredon-actions';
+import { CoredonClient } from '@/app/lib/coredon-types';
 
 // ── Custom Date Picker ───────────────────────────────────────────────────────
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -279,8 +280,114 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
   );
 }
 
+// ── Client avatar color ─────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
+function avatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+// ── Client combobox ─────────────────────────────────────────────────────────
+function ClientCombobox({ clients, value, onSelect, hasError }: {
+  clients: CoredonClient[];
+  value: string;
+  onSelect: (name: string, email: string) => void;
+  hasError?: boolean;
+}) {
+  const [query,  setQuery]  = useState(value);
+  const [open,   setOpen]   = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const filtered = query.trim()
+    ? clients.filter(c =>
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        c.company.toLowerCase().includes(query.toLowerCase()) ||
+        c.email.toLowerCase().includes(query.toLowerCase())
+      )
+    : clients;
+
+  function pick(c: CoredonClient) {
+    onSelect(c.name, c.email);
+    setQuery(c.name);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        style={hasError ? { ...errInp(true) } : inp}
+        placeholder="Type or select a client…"
+        value={query}
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onChange={e => {
+          setQuery(e.target.value);
+          onSelect(e.target.value, '');
+          setOpen(true);
+        }}
+      />
+
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 999,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          overflow: 'hidden', maxHeight: 240, overflowY: 'auto',
+        }}>
+          {filtered.map(c => {
+            const color = avatarColor(c.name);
+            const initials = c.name.split(' ').map((w: string) => w[0] || '').join('').slice(0, 2).toUpperCase();
+            return (
+              <div
+                key={c.id}
+                onMouseDown={() => pick(c)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', cursor: 'pointer',
+                  borderBottom: '1px solid var(--border-light)',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: color + '22', color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {initials}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.company || c.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.name !== c.company ? c.name : c.email}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
-export default function CreateProjectForm() {
+export default function CreateProjectForm({ clients = [] }: { clients?: CoredonClient[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState<1 | 2>(1);
@@ -340,7 +447,15 @@ export default function CreateProjectForm() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="Client Name / Company" required error={errors.name}>
-                <input style={errInp(!!errors.name)} placeholder="Type client name or company…" value={s1.name} onChange={e => upd1('name', e.target.value)} />
+                <ClientCombobox
+                  clients={clients}
+                  value={s1.name}
+                  hasError={!!errors.name}
+                  onSelect={(name, email) => {
+                    upd1('name', name);
+                    if (email) upd1('email', email);
+                  }}
+                />
               </Field>
               <Field label="Client Email" required error={errors.email}>
                 <input style={errInp(!!errors.email)} placeholder="client@example.com" type="email" value={s1.email} onChange={e => upd1('email', e.target.value)} />

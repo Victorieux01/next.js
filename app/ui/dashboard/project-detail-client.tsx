@@ -282,7 +282,7 @@ export default function ProjectDetailClient({ project: p }: Props) {
               width: 60, height: 60, borderRadius: 16,
               background: isDispute ? '#EF4444' : p.color,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 800, fontSize: 18, flexShrink: 0,
+              color: '#262626', fontWeight: 800, fontSize: 18, flexShrink: 0,
               transition: 'background 0.2s',
             }}>
               {p.initials}
@@ -366,6 +366,11 @@ export default function ProjectDetailClient({ project: p }: Props) {
         </div>
       </div>
 
+      {/* Revision Requests Section */}
+      {(p.revisions || []).length > 0 && (
+        <RevisionRequestsSection revisions={p.revisions || []} />
+      )}
+
       {/* Disputes Section */}
       {activeDisputes.length > 0 && (
         <DisputesSection
@@ -417,7 +422,7 @@ export default function ProjectDetailClient({ project: p }: Props) {
         <div className="modal-overlay" onClick={() => setDisputeStep(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#242424', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
                 </svg>
@@ -450,7 +455,7 @@ export default function ProjectDetailClient({ project: p }: Props) {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn-outline" onClick={() => { setDisputeStep(null); setDisputeReason(''); }}>Cancel</button>
               <button
-                style={{ background: '#EF4444', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: disputeReason.trim() ? 'pointer' : 'not-allowed', opacity: disputeReason.trim() ? 1 : 0.5 }}
+                style={{ background: '#EF4444', color: '#242424', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: disputeReason.trim() ? 'pointer' : 'not-allowed', opacity: disputeReason.trim() ? 1 : 0.5 }}
                 disabled={!disputeReason.trim()}
                 onClick={() => disputeReason.trim() && setDisputeStep('confirm')}
               >
@@ -466,7 +471,7 @@ export default function ProjectDetailClient({ project: p }: Props) {
         <div className="modal-overlay" onClick={() => setDisputeStep('reason')}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
@@ -477,9 +482,9 @@ export default function ProjectDetailClient({ project: p }: Props) {
               </div>
             </div>
 
-            <div style={{ background: '#FEF2F2', borderRadius: 10, padding: '14px 16px', marginBottom: 24, borderLeft: '3px solid #EF4444' }}>
+            <div style={{ background: 'rgba(239,68,68,0.06)', borderRadius: 10, padding: '14px 16px', marginBottom: 24, borderLeft: '3px solid #EF4444' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Dispute Reason</div>
-              <div style={{ fontSize: 13, color: '#7F1D1D', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{disputeReason}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{disputeReason}</div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -558,6 +563,74 @@ export default function ProjectDetailClient({ project: p }: Props) {
   );
 }
 
+// ── Revision Requests Section ───────────────────────────────────────────────
+function RevisionRequestsSection({ revisions }: { revisions: { id: string; date: string; note: string }[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Revision Requests</span>
+        </div>
+        <span style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
+          {revisions.length}
+        </span>
+      </div>
+
+      {/* Rows */}
+      {revisions.map((r, i) => (
+        <div key={r.id}>
+          <div
+            onClick={() => setExpanded(expanded === r.id ? null : r.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '13px 20px',
+              borderTop: i > 0 ? '1px solid var(--border-light)' : 'none',
+              cursor: 'pointer',
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Revision #{i + 1}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{r.date}</div>
+            </div>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"
+              style={{ transform: expanded === r.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}
+            >
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </div>
+
+          {/* Expanded note */}
+          {expanded === r.id && (
+            <div style={{ padding: '0 20px 16px 62px' }}>
+              <div style={{ background: 'rgba(217,119,6,0.06)', borderLeft: '3px solid #D97706', borderRadius: '0 8px 8px 0', padding: '12px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {r.note}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Disputes Section ────────────────────────────────────────────────────────
 function DisputesSection({
   disputes, amount, projectId,
@@ -579,7 +652,7 @@ function DisputesSection({
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <span style={{ fontSize: 15, fontWeight: 800, color: '#EF4444' }}>Disputes</span>
-        <span style={{ background: '#FEF2F2', color: '#EF4444', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '2px 8px' }}>
+        <span style={{ background: 'var(--blue-bg)', color: 'var(--blue)', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '2px 8px' }}>
           {disputes.length} active
         </span>
       </div>
@@ -591,7 +664,7 @@ function DisputesSection({
             key={d.id}
             style={{
               background: 'var(--surface)',
-              border: '1px solid #FECACA',
+              border: '1px solid #242424',
               borderLeft: '4px solid #EF4444',
               borderRadius: 12,
               padding: 24,
@@ -601,7 +674,7 @@ function DisputesSection({
             {/* Dispute header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
                   </svg>
@@ -611,21 +684,21 @@ function DisputesSection({
                   <div style={{ fontSize: 12, color: '#EF4444', fontWeight: 600, marginTop: 2 }}>Funds are frozen — review in progress</div>
                 </div>
               </div>
-              <span style={{ background: '#FEF2F2', color: '#EF4444', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '4px 10px', border: '1px solid #FECACA' }}>
+              <span style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444', fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '4px 10px', border: '1px solid rgba(239,68,68,0.2)' }}>
                 Open
               </span>
             </div>
 
             {/* Detail grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, padding: '16px 0', borderTop: '1px solid #FECACA', borderBottom: '1px solid #FECACA', margin: '16px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, padding: '16px 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', margin: '16px 0' }}>
               {[
                 ['DISPUTE OPENED', d.date],
                 ['AMOUNT FROZEN',  amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$'],
                 ['STATUS',         d.status],
               ].map(([label, val], i) => (
-                <div key={label} style={{ paddingLeft: i > 0 ? 20 : 0, borderLeft: i > 0 ? '1px solid #FECACA' : 'none' }}>
+                <div key={label} style={{ paddingLeft: i > 0 ? 20 : 0, borderLeft: i > 0 ? '1px solid var(--border)' : 'none' }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4, opacity: 0.7 }}>{label}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#7F1D1D' }}>{val}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{val}</div>
                 </div>
               ))}
             </div>
@@ -635,7 +708,7 @@ function DisputesSection({
               <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, opacity: 0.7 }}>
                 Dispute Reason
               </div>
-              <div style={{ background: '#FEF2F2', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#7F1D1D', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #FECACA' }}>
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid var(--border)' }}>
                 {original}
               </div>
             </div>
@@ -646,7 +719,7 @@ function DisputesSection({
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
                   Internal Note — {n.date}
                 </div>
-                <div style={{ background: '#F8FAFC', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid var(--border-light)' }}>
+                <div style={{ background: 'rgba(239,68,68,0.06)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', borderLeft: '3px solid #EF4444' }}>
                   {n.text}
                 </div>
               </div>
@@ -657,14 +730,14 @@ function DisputesSection({
               <button
                 disabled={submitting}
                 onClick={() => onAccept(d)}
-                style={{ flex: 1, background: '#0984E3', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                style={{ flex: 1, background: 'var(--surface)', color: '#EF4444', border: '1.5px solid #EF4444', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
               >
                 Accept
               </button>
               <button
                 disabled={submitting}
                 onClick={() => onReject(d)}
-                style={{ flex: 1, background: 'var(--surface)', color: '#7F1D1D', border: '1.5px solid #EF4444', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                style={{ flex: 1, background: 'var(--surface)', color: '#EF4444', border: '1.5px solid #EF4444', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.6 : 1 }}
               >
                 Reject
               </button>
@@ -718,28 +791,41 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
   }
 
   return (
-    <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Upload Your Work</div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-        Upload your deliverable so the client can review and approve it.
+    <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Upload Your Work</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Upload deliverables for client review</div>
+        </div>
       </div>
 
       {disabled ? (
         <div style={{
-          border: '2px dashed #FECACA',
-          borderRadius: 12,
-          padding: '40px 24px',
+          borderRadius: 10,
+          padding: '20px 18px',
           textAlign: 'center',
-          background: '#FEF2F2',
-          marginBottom: 24,
+          background: 'rgba(239,68,68,0.06)',
+          border: '1px solid rgba(239,68,68,0.15)',
+          marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 12,
         }}>
-          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>Uploads disabled during dispute</div>
-          <div style={{ fontSize: 12, color: '#F87171', marginTop: 4 }}>All uploads are frozen until the dispute is resolved.</div>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#EF4444' }}>Uploads disabled during dispute</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Frozen until the dispute is resolved.</div>
+          </div>
         </div>
       ) : (
         <div
@@ -748,14 +834,14 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
           onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
           onClick={() => inputRef.current?.click()}
           style={{
-            border: `2px dashed ${dragging ? '#4285F4' : 'var(--border-light)'}`,
-            borderRadius: 12,
-            padding: '40px 24px',
+            border: `1.5px dashed ${dragging ? 'var(--blue)' : 'var(--border)'}`,
+            borderRadius: 10,
+            padding: '28px 20px',
             textAlign: 'center',
             cursor: 'pointer',
-            background: dragging ? 'rgba(66,133,244,0.05)' : 'var(--bg)',
+            background: dragging ? 'var(--blue-bg)' : 'var(--bg)',
             transition: 'all 0.15s',
-            marginBottom: 24,
+            marginBottom: 20,
           }}
         >
           <input
@@ -766,47 +852,49 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
             style={{ display: 'none' }}
             onChange={e => handleFiles(e.target.files)}
           />
-          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-            {uploading ? 'Uploading…' : <><span>Drop your file here or </span><span style={{ color: '#4285F4', textDecoration: 'underline' }}>click to browse</span></>}
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {uploading ? 'Uploading…' : <><span>Drop files here or </span><span style={{ color: 'var(--blue)' }}>browse</span></>}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>.mp4, .mov, .zip, .pdf, .png, .jpg, .webp — max 10 GB</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>.mp4 · .mov · .zip · .pdf · .png · .jpg — max 10 GB</div>
           {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
         </div>
       )}
 
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-        Uploaded Deliverables
-      </div>
-      {versions.length === 0 && (
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>No deliverables uploaded yet.</div>
-      )}
-      {versions.map((v, i) => (
-        <div key={v.id} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 14px', borderRadius: 10, background: 'var(--bg)',
-          marginBottom: i < versions.length - 1 ? 8 : 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{v.note}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{v.date}</div>
-            </div>
+      {/* Deliverables list */}
+      {versions.length > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+            Deliverables · {versions.length}
           </div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#4285F4' }}>Uploaded</span>
+          {versions.map((v, i) => (
+            <div key={v.id} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', borderRadius: 8,
+              borderTop: i > 0 ? '1px solid var(--border-light)' : 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{v.note}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{v.date}</div>
+                </div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--blue)', background: 'var(--blue-bg)', borderRadius: 20, padding: '3px 10px' }}>Uploaded</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {/* Notify client button */}
       <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border-light)' }}>
