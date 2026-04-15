@@ -8,19 +8,26 @@ declare global {
   var _supabaseAdmin: SupabaseClient | undefined;
 }
 
-const supabase: SupabaseClient =
-  global._supabaseAdmin ??
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (createClient as any)(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  );
-
-if (process.env.NODE_ENV !== 'production') {
-  global._supabaseAdmin = supabase;
+function getSupabaseClient(): SupabaseClient {
+  if (!global._supabaseAdmin) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    global._supabaseAdmin = (createClient as any)(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
+  }
+  return global._supabaseAdmin!;
 }
 
+// Lazy proxy — defers createClient() until the first actual call at runtime.
+// This prevents build failures when SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+// are not available in the build environment.
+const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    return Reflect.get(getSupabaseClient(), prop as string);
+  },
+});
+
 export default supabase;
-// Re-export typed helper so callers can opt-in without changing imports
 export type { AnyDatabase };
