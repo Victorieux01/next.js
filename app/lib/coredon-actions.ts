@@ -2,7 +2,7 @@
 import supabase from './supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail } from './sendgrid';
+import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail, sendApprovalEmail, sendRequestChangesEmail } from './sendgrid';
 import { auth } from '@/auth';
 
 const COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
@@ -257,6 +257,116 @@ export async function updateUserProfile(data: {
     }, { onConflict: 'user_id' }),
   ]);
   revalidatePath('/dashboard/earnings');
+}
+
+// ── Escrow: Client Approval & Change Requests ────────────────────────────────
+
+// Called from the public client portal — no session required.
+// The project ID is the only access token (shared via email link).
+export async function approveProject(projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+
+    // Only approve if still Funded (idempotent guard)
+    const { data: project, error: fetchErr } = await supabase
+      .from('coredon_projects')
+      .select('id, name, email, amount, user_id, status')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchErr || !project) return { success: false, error: 'Project not found.' };
+    if (project.status === 'Released') return { success: true }; // already done
+    if (project.status !== 'Funded') return { success: false, error: 'Project is not in a fundable state.' };
+
+    await supabase.from('coredon_projects').update({
+      status:        'Released',
+      released_date: date,
+      approved_date: date,
+      completion_date: date,
+    }).eq('id', projectId);
+
+    revalidatePath(`/client/${projectId}`);
+    revalidatePath(`/dashboard/projects/${projectId}`);
+    revalidatePath('/dashboard/projects');
+    revalidatePath('/dashboard');
+
+    // Notify provider by email
+    const { data: provider } = await supabase
+      .from('users')
+      .select('email, name')
+      .eq('id', project.user_id)
+      .single();
+
+    if (provider?.email) {
+      sendApprovalEmail({
+        providerEmail: provider.email,
+        providerName:  provider.name ?? 'Provider',
+        projectName:   project.name,
+        amount:        parseFloat(project.amount) || 0,
+        projectId,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
+      }).catch(err => console.error('Approval email error:', err));
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('approveProject error:', err);
+    return { success: false, error: 'Failed to approve project.' };
+  }
+}
+
+// Called from the public client portal — no session required.
+export async function clientRequestChanges(
+  projectId: string,
+  clientName: string,
+  reason: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+
+    const { data: project, error: fetchErr } = await supabase
+      .from('coredon_projects')
+      .select('id, name, user_id, status')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchErr || !project) return { success: false, error: 'Project not found.' };
+    if (project.status === 'Released') return { success: false, error: 'Project is already completed.' };
+
+    // Add revision entry so it appears in the timeline
+    await supabase.from('coredon_project_revisions').insert({
+      project_id: projectId,
+      date,
+      note: `[Client] ${reason}`,
+    });
+
+    revalidatePath(`/client/${projectId}`);
+    revalidatePath(`/dashboard/projects/${projectId}`);
+
+    // Notify provider by email
+    const { data: provider } = await supabase
+      .from('users')
+      .select('email, name')
+      .eq('id', project.user_id)
+      .single();
+
+    if (provider?.email) {
+      sendRequestChangesEmail({
+        providerEmail: provider.email,
+        providerName:  provider.name ?? 'Provider',
+        projectName:   project.name,
+        clientName,
+        reason,
+        projectId,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
+      }).catch(err => console.error('Request changes email error:', err));
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('clientRequestChanges error:', err);
+    return { success: false, error: 'Failed to submit request.' };
+  }
 }
 
 // ── Preview Notification ──────────────────────────────────────────────────────

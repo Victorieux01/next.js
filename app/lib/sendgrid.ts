@@ -153,6 +153,118 @@ export async function sendDisputeRejectionEmail(
   });
 }
 
+export async function sendApprovalEmail({
+  providerEmail,
+  providerName,
+  projectName,
+  amount,
+  projectId,
+  appUrl,
+}: {
+  providerEmail: string;
+  providerName: string;
+  projectName: string;
+  amount: number;
+  projectId: string;
+  appUrl: string;
+}) {
+  const fmtAmount = amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
+  const dashboardUrl = `${appUrl}/dashboard/projects/${projectId}`;
+
+  await resend.emails.send({
+    from: 'Coredon <contracts@coredon.app>',
+    to: providerEmail,
+    subject: `✅ Client Approved — ${projectName}`,
+    html: `<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head><meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/></head>
+<body style="background-color:#0a0a0a;margin:0;padding:0;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" align="center">
+    <tr><td style="padding:48px 20px">
+      <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;margin:0 auto">
+        <tr><td>
+          <p style="font-size:22px;font-weight:700;color:#fff;letter-spacing:0.18em;text-transform:uppercase;text-align:center;margin:0 0 32px">COREDON</p>
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#161616;border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden">
+            <tr><td style="padding:32px">
+              <p style="margin:0 0 6px;font-size:12px;color:#00C896;letter-spacing:0.08em;text-transform:uppercase">Project Approved</p>
+              <p style="margin:0 0 20px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.02em">${projectName}</p>
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px"/>
+              <p style="margin:0 0 24px;font-size:14px;color:#888;line-height:1.6">
+                Hi ${providerName},<br/><br/>
+                Great news — your client has <strong style="color:#00C896">approved the deliverables</strong> and released the funds for <strong style="color:#aaa">${projectName}</strong>.<br/><br/>
+                Amount released: <strong style="color:#00C896">${fmtAmount}</strong>
+              </p>
+              <a href="${dashboardUrl}" style="display:block;background:#00C896;color:#000;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Project →</a>
+            </td></tr>
+          </table>
+          <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
+
+export async function sendRequestChangesEmail({
+  providerEmail,
+  providerName,
+  projectName,
+  clientName,
+  reason,
+  projectId,
+  appUrl,
+}: {
+  providerEmail: string;
+  providerName: string;
+  projectName: string;
+  clientName: string;
+  reason: string;
+  projectId: string;
+  appUrl: string;
+}) {
+  const dashboardUrl = `${appUrl}/dashboard/projects/${projectId}`;
+
+  await resend.emails.send({
+    from: 'Coredon <contracts@coredon.app>',
+    to: providerEmail,
+    subject: `🔄 Changes Requested — ${projectName}`,
+    html: `<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head><meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/></head>
+<body style="background-color:#0a0a0a;margin:0;padding:0;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" align="center">
+    <tr><td style="padding:48px 20px">
+      <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;margin:0 auto">
+        <tr><td>
+          <p style="font-size:22px;font-weight:700;color:#fff;letter-spacing:0.18em;text-transform:uppercase;text-align:center;margin:0 0 32px">COREDON</p>
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#161616;border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden">
+            <tr><td style="padding:32px">
+              <p style="margin:0 0 6px;font-size:12px;color:#F59E0B;letter-spacing:0.08em;text-transform:uppercase">Changes Requested</p>
+              <p style="margin:0 0 20px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.02em">${projectName}</p>
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px"/>
+              <p style="margin:0 0 16px;font-size:14px;color:#888;line-height:1.6">
+                Hi ${providerName},<br/><br/>
+                <strong style="color:#aaa">${clientName}</strong> has reviewed the latest deliverable for <strong style="color:#aaa">${projectName}</strong> and is requesting changes.
+              </p>
+              <div style="background:#1e1e1e;border:1px solid rgba(255,255,255,0.08);border-left:4px solid #F59E0B;border-radius:8px;padding:16px;margin-bottom:24px">
+                <p style="margin:0 0 6px;font-size:11px;color:#F59E0B;font-weight:700;text-transform:uppercase;letter-spacing:0.06em">Client Feedback</p>
+                <p style="margin:0;font-size:14px;color:#ccc;line-height:1.6;white-space:pre-wrap">${reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+              </div>
+              <a href="${dashboardUrl}" style="display:block;background:#1a8cff;color:#fff;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Project →</a>
+            </td></tr>
+          </table>
+          <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
+
 export async function sendInvoiceDeletionEmail(
   customerEmail: string,
   customerName: string,

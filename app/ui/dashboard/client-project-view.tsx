@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
+import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -53,9 +54,37 @@ function EventIcon({ type }: { type: string }) {
 
 interface Props { project: Project }
 
-export default function ClientProjectView({ project: p }: Props) {
+export default function ClientProjectView({ project: initialProject }: Props) {
+  const [p, setP] = useState(initialProject);
   const isDispute  = p.status === 'Dispute';
   const isFinished = p.status === 'Released';
+  const isFunded   = p.status === 'Funded';
+
+  // Approve & Release
+  const [approvePending, startApprove] = useTransition();
+  const [approveError, setApproveError] = useState('');
+  const [approved, setApproved] = useState(false);
+
+  function handleApprove() {
+    setApproveError('');
+    startApprove(async () => {
+      const res = await approveProject(p.id);
+      if (res.success) {
+        setApproved(true);
+        setP(prev => ({ ...prev, status: 'Released', released_date: new Date().toISOString().slice(0, 10), approved_date: new Date().toISOString().slice(0, 10) }));
+      } else {
+        setApproveError(res.error ?? 'Something went wrong.');
+      }
+    });
+  }
+
+  // Request Changes
+  const [showChangesForm, setShowChangesForm] = useState(false);
+  const [changeReason, setChangeReason] = useState('');
+  const [changeName, setChangeName] = useState(p.email?.split('@')[0] ?? 'Client');
+  const [changesPending, startChanges] = useTransition();
+  const [changesError, setChangesError] = useState('');
+  const [changesSent, setChangesSent] = useState(false);
 
   let durationVal = '—';
   if (p.start_date) {
@@ -72,6 +101,7 @@ export default function ClientProjectView({ project: p }: Props) {
     ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Stripe Connect') }] : []),
     ...(p.versions || []).map(v => ({ date: v.date, type: 'upload', label: v.note })),
     ...(p.revisions || []).map(r => ({ date: r.date, type: 'revision', label: r.note })),
+    ...(p.approved_date ? [{ date: p.approved_date, type: 'approved', label: 'Deliverables approved by client' }] : []),
     ...(p.released_date ? [{ date: p.released_date, type: 'released', label: 'Payment released to provider' }] : []),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -79,6 +109,7 @@ export default function ClientProjectView({ project: p }: Props) {
     payment:  { bg: '#FEF3C7', color: '#D97706' },
     upload:   { bg: '#EFF6FF', color: '#2563EB' },
     revision: { bg: '#FEF3C7', color: '#D97706' },
+    approved: { bg: '#DCFCE7', color: '#00C896' },
     released: { bg: '#DCFCE7', color: '#16A34A' },
   };
 
@@ -185,6 +216,136 @@ export default function ClientProjectView({ project: p }: Props) {
           )}
         </div>
       </div>
+
+      {/* Escrow Action Panel — only shown while Funded */}
+      {isFunded && !approved && (
+        <div className="card" style={{ padding: 28, marginBottom: 20, border: '1px solid rgba(0,200,150,0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(0,200,150,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Ready to approve?</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
+                Review the latest deliverable, then approve to release the escrow funds to your provider.
+              </div>
+            </div>
+          </div>
+
+          {!showChangesForm ? (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleApprove}
+                disabled={approvePending}
+                style={{
+                  flex: 1, padding: '13px 20px', borderRadius: 10,
+                  background: approvePending ? '#1a4a3a' : '#00C896', color: approvePending ? '#555' : '#000',
+                  fontWeight: 700, fontSize: 14, border: 'none', cursor: approvePending ? 'wait' : 'pointer',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {approvePending ? 'Releasing funds…' : '✓ Approve & Release Funds'}
+              </button>
+              <button
+                onClick={() => setShowChangesForm(true)}
+                style={{
+                  flex: 1, padding: '13px 20px', borderRadius: 10,
+                  background: 'transparent', color: 'var(--text-primary)',
+                  fontWeight: 700, fontSize: 14,
+                  border: '1px solid var(--border-light)',
+                  cursor: 'pointer',
+                }}
+              >
+                Request Changes
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Your name</div>
+              <input
+                value={changeName}
+                onChange={e => setChangeName(e.target.value)}
+                placeholder="Your name"
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 8, marginBottom: 12,
+                  background: 'var(--surface)', border: '1px solid var(--border-light)',
+                  color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>What needs to be changed?</div>
+              <textarea
+                value={changeReason}
+                onChange={e => setChangeReason(e.target.value)}
+                placeholder="Describe the changes you'd like…"
+                rows={4}
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 8, marginBottom: 12,
+                  background: 'var(--surface)', border: '1px solid var(--border-light)',
+                  color: 'var(--text-primary)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                }}
+              />
+              {changesError && <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{changesError}</div>}
+              {changesSent ? (
+                <div style={{ color: '#00C896', fontSize: 14, fontWeight: 600, padding: '10px 0' }}>
+                  ✓ Your request has been sent to your provider.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      if (!changeReason.trim()) { setChangesError('Please describe the changes.'); return; }
+                      setChangesError('');
+                      startChanges(async () => {
+                        const res = await clientRequestChanges(p.id, changeName, changeReason.trim());
+                        if (res.success) { setChangesSent(true); setChangeReason(''); }
+                        else setChangesError(res.error ?? 'Something went wrong.');
+                      });
+                    }}
+                    disabled={changesPending}
+                    style={{
+                      flex: 1, padding: '12px 20px', borderRadius: 10,
+                      background: '#1a8cff', color: '#fff',
+                      fontWeight: 700, fontSize: 14, border: 'none',
+                      cursor: changesPending ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {changesPending ? 'Sending…' : 'Send Request'}
+                  </button>
+                  <button
+                    onClick={() => { setShowChangesForm(false); setChangesError(''); }}
+                    style={{
+                      padding: '12px 20px', borderRadius: 10,
+                      background: 'transparent', border: '1px solid var(--border-light)',
+                      color: 'var(--text-primary)', fontWeight: 600, fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {approveError && <div style={{ color: '#EF4444', fontSize: 13, marginTop: 12 }}>{approveError}</div>}
+        </div>
+      )}
+
+      {/* Approval confirmed banner */}
+      {(approved || p.status === 'Released') && p.approved_date && (
+        <div className="card" style={{ padding: '16px 24px', marginBottom: 20, background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.25)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#00C896' }}>
+            You approved this project on {p.approved_date}. Funds have been released.
+          </span>
+        </div>
+      )}
 
       {/* Active Disputes (read-only) */}
       {activeDisputes.length > 0 && (

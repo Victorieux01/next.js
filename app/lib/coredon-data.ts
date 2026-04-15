@@ -20,6 +20,7 @@ function serializeProject(row: any, related: {
     completion_date: toStr(row.completion_date),
     prepaid_date: toStr(row.prepaid_date),
     released_date: toStr(row.released_date),
+    approved_date: toStr(row.approved_date),
     created_at: toStr(row.created_at),
     revisions: related.revisions,
     versions:  related.versions,

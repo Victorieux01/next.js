@@ -47,6 +47,7 @@ export interface Project {
   prepaid_date?: string;
   prepaid_method?: string;
   released_date?: string;
+  approved_date?: string;
   description: string;
   pinned: boolean;
   created_at: string;
