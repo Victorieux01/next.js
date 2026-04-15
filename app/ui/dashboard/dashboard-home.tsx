@@ -286,11 +286,232 @@ function DonutChart({ funded, released, pending, dispute }: { funded: number; re
   );
 }
 
+// ── Notification helpers ────────────────────────────────────────────────────
+type NotifEvent = {
+  id: string;
+  type: 'dispute' | 'funded' | 'released' | 'revision' | 'version' | 'pending';
+  title: string;
+  description: string;
+  date: string;
+  color: string;
+  initials: string;
+  projectId: string;
+};
+
+function buildNotifications(projects: Project[]): NotifEvent[] {
+  const events: NotifEvent[] = [];
+
+  for (const p of projects) {
+    // Dispute opened
+    for (const d of p.disputes || []) {
+      if (d.status === 'Open') {
+        events.push({
+          id: 'dispute-' + d.id,
+          type: 'dispute',
+          title: `Dispute opened — ${p.name}`,
+          description: d.reason.split('\n')[0]?.slice(0, 80) || 'Funds are frozen pending review.',
+          date: d.date,
+          color: '#EF4444',
+          initials: p.initials,
+          projectId: p.id,
+        });
+      }
+    }
+    // Escrow funded
+    if (p.prepaid_date) {
+      events.push({
+        id: 'funded-' + p.id,
+        type: 'funded',
+        title: `Escrow funded — ${p.name}`,
+        description: `${fmt(p.amount)} held in escrow via ${p.prepaid_method || 'Stripe Connect'}.`,
+        date: p.prepaid_date,
+        color: '#00C896',
+        initials: p.initials,
+        projectId: p.id,
+      });
+    }
+    // Payment released
+    if (p.released_date) {
+      events.push({
+        id: 'released-' + p.id,
+        type: 'released',
+        title: `Payment released — ${p.name}`,
+        description: `${fmt(p.amount)} released after client approval.`,
+        date: p.released_date,
+        color: '#0984E3',
+        initials: p.initials,
+        projectId: p.id,
+      });
+    }
+    // Revisions
+    for (const r of p.revisions || []) {
+      events.push({
+        id: 'revision-' + r.id,
+        type: 'revision',
+        title: `New revision requested — ${p.name}`,
+        description: r.note?.slice(0, 80) || 'A revision was requested.',
+        date: r.date,
+        color: '#F59E0B',
+        initials: p.initials,
+        projectId: p.id,
+      });
+    }
+    // Versions uploaded
+    for (const v of p.versions || []) {
+      events.push({
+        id: 'version-' + v.id,
+        type: 'version',
+        title: `Deliverable uploaded — ${p.name}`,
+        description: v.note?.slice(0, 80) || 'A new version was uploaded.',
+        date: v.date,
+        color: '#6366F1',
+        initials: p.initials,
+        projectId: p.id,
+      });
+    }
+  }
+
+  return events.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function relativeDate(dateStr: string): string {
+  const diff = Math.floor((Date.now() - new Date(dateStr + 'T00:00:00').getTime()) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) return `${diff} days ago`;
+  if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+}
+
+function NotifIcon({ type }: { type: NotifEvent['type'] }) {
+  if (type === 'dispute') return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  );
+  if (type === 'funded') return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  );
+  if (type === 'released') return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  );
+  if (type === 'revision') return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+    </svg>
+  );
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+  );
+}
+
+function NotificationPanel({ events, onClose, onNavigate }: { events: NotifEvent[]; onClose: () => void; onNavigate: (projectId: string) => void }) {
+  return (
+    <>
+      {/* Panel */}
+      <div style={{
+        position: 'fixed',
+        top: 0, right: 0, bottom: 0,
+        width: 340,
+        background: 'var(--surface)',
+        borderLeft: '1px solid var(--border)',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.12)',
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        animation: 'slideInRight 0.2s ease both',
+      }}>
+        <style>{`@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
+
+        {/* Header */}
+        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 15, fontWeight: 800 }}>Notifications</span>
+            {events.length > 0 && (
+              <span style={{ background: '#EF4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '2px 7px' }}>
+                {events.length}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {events.length === 0 ? (
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              No notifications yet.
+            </div>
+          ) : (
+            events.map((e, i) => (
+              <div key={e.id} style={{
+                display: 'flex', gap: 12, padding: '14px 20px',
+                borderBottom: i < events.length - 1 ? '1px solid var(--border-light)' : 'none',
+                alignItems: 'flex-start',
+              }}>
+                {/* Icon bubble */}
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                  background: e.color + '1A', color: e.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginTop: 1,
+                }}>
+                  <NotifIcon type={e.type} />
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, lineHeight: 1.3 }}>
+                    {e.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>
+                    {e.description}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>
+                      {relativeDate(e.date)}
+                    </span>
+                    <button
+                      onClick={() => { onNavigate(e.projectId); onClose(); }}
+                      style={{
+                        fontSize: 11, fontWeight: 700, color: 'var(--blue)',
+                        background: 'var(--blue-bg)', border: 'none', borderRadius: 6,
+                        padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      View
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Dashboard Home ─────────────────────────────────────────────────────────
 export default function DashboardHome({ projects, user }: Props) {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsUser, setSettingsUser] = useState<UserProfile | null>(null);
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifications = buildNotifications(projects);
 
   const rawName = user?.name ?? '';
   const initials = rawName.split(' ').map(w => w[0] ?? '').filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
@@ -392,18 +613,26 @@ export default function DashboardHome({ projects, user }: Props) {
   const pageItems = filtered.slice((page - 1) * PER, page * PER);
 
   return (
-    <div className="page fade-in" style={{ position: 'relative' }}>
+    <div className="page fade-in" style={{ position: 'relative', paddingRight: notifOpen ? 356 : undefined, transition: 'padding-right 0.2s ease' }}>
       {/* Page Controls */}
       <div id="page-controls">
-        <button className="tb-icon-btn" title="Notifications">
+        <button className="tb-icon-btn" title="Notifications" onClick={() => setNotifOpen(o => !o)}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
-          <span className="tb-notif-dot" />
+          {notifications.length > 0 && <span className="tb-notif-dot" />}
         </button>
         <button className="tb-avatar" onClick={openSettings} title="Settings">{initials}</button>
       </div>
+
+      {notifOpen && (
+        <NotificationPanel
+          events={notifications}
+          onClose={() => setNotifOpen(false)}
+          onNavigate={(projectId) => router.push(`/dashboard/projects/${projectId}`)}
+        />
+      )}
 
       {settingsOpen && settingsUser && (
         <SettingsModal

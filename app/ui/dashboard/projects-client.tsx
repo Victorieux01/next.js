@@ -19,8 +19,8 @@ function Badge({ status }: { status: string }) {
 
 function Avatar({ project }: { project: Project }) {
   const isDispute = project.status === 'Dispute';
-  const bg    = isDispute ? '#FEE2E2' : project.color + '22';
-  const color = isDispute ? '#EF4444' : project.color;
+  const bg    = isDispute ? '#421616' : project.color + '22';
+  const color = isDispute ? '#984040' : project.color;
   return (
     <div style={{ width: 34, height: 34, borderRadius: 10, background: bg, color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0, transition: 'background 0.2s, color 0.2s' }}>
       {project.initials}
