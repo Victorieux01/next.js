@@ -27,7 +27,11 @@
       "Bash(curl -s http://localhost:3000/dashboard/projects)",
       "Bash(npm install:*)",
       "Bash(node -e \"require\\('@stripe/connect-js'\\); console.log\\('ok'\\)\")",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(vercel --version)",
+      "mcp__vercel__get_runtime_logs",
+      "mcp__vercel__list_deployments",
+      "mcp__vercel__get_deployment_build_logs"
     ]
   }
 }
