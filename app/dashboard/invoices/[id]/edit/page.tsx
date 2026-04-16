@@ -2,11 +2,11 @@ import Form from '@/app/ui/invoices/edit-form';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
 import { fetchInvoiceById, fetchCustomers } from '@/app/lib/data';
 import { notFound } from 'next/navigation';
-import { auth } from '@/auth';
+import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect('/login');
 
   const params = await props.params;

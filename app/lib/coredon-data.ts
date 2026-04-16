@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import supabase from './supabase';
 import { Project, CoredonClient } from './coredon-types';
 
@@ -60,17 +61,7 @@ async function fetchRelated(projectIds: string[]) {
   };
 }
 
-export async function fetchDashboardData(userId: string) {
-  try {
-    const [projects, clients] = await Promise.all([fetchAllProjects(userId), fetchAllClients(userId)]);
-    return { projects, clients };
-  } catch (error) {
-    console.error('Dashboard data fetch error:', error);
-    return { projects: [], clients: [] };
-  }
-}
-
-export async function fetchAllProjects(userId: string): Promise<Project[]> {
+async function _fetchAllProjects(userId: string): Promise<Project[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
@@ -97,6 +88,44 @@ export async function fetchAllProjects(userId: string): Promise<Project[]> {
   } catch (error) {
     console.error('fetchAllProjects error:', error instanceof Error ? error.message : JSON.stringify(error));
     return [];
+  }
+}
+
+export const fetchAllProjects = (userId: string) =>
+  unstable_cache(_fetchAllProjects, ['projects'], {
+    tags: [`projects-${userId}`],
+    revalidate: 30,
+  })(userId);
+
+async function _fetchAllClients(userId: string): Promise<CoredonClient[]> {
+  try {
+    const { data, error } = await supabase
+      .from('coredon_clients')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    return (data ?? []).map(serializeClient);
+  } catch (error) {
+    console.error('fetchAllClients error:', error instanceof Error ? error.message : JSON.stringify(error));
+    return [];
+  }
+}
+
+export const fetchAllClients = (userId: string) =>
+  unstable_cache(_fetchAllClients, ['clients'], {
+    tags: [`clients-${userId}`],
+    revalidate: 30,
+  })(userId);
+
+export async function fetchDashboardData(userId: string) {
+  try {
+    const [projects, clients] = await Promise.all([fetchAllProjects(userId), fetchAllClients(userId)]);
+    return { projects, clients };
+  } catch (error) {
+    console.error('Dashboard data fetch error:', error);
+    return { projects: [], clients: [] };
   }
 }
 
@@ -180,18 +209,3 @@ export async function fetchUserSettings(userId: string): Promise<{ plan: string;
   }
 }
 
-export async function fetchAllClients(userId: string): Promise<CoredonClient[]> {
-  try {
-    const { data, error } = await supabase
-      .from('coredon_clients')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message || JSON.stringify(error));
-    return (data ?? []).map(serializeClient);
-  } catch (error) {
-    console.error('fetchAllClients error:', error instanceof Error ? error.message : JSON.stringify(error));
-    return [];
-  }
-}

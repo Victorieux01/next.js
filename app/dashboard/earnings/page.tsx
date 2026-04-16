@@ -1,10 +1,10 @@
 import { fetchAllProjects, fetchUserSettings } from '@/app/lib/coredon-data';
 import EarningsClient from '@/app/ui/dashboard/earnings-client';
-import { auth } from '@/auth';
+import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 
 export default async function EarningsPage() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect('/login');
   const [projects, settings] = await Promise.all([
     fetchAllProjects(session.user.id),

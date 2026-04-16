@@ -1,7 +1,7 @@
 import Form from '@/app/ui/invoices/create-form';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
-import { auth } from '@/auth';
+import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Page() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect('/login');
   const customers = await fetchCustomers(session.user.id);
 

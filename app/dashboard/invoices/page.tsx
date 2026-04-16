@@ -6,7 +6,7 @@ import { lusitana } from '@/app/ui/fonts';
 import { Suspense } from 'react';
 import { InvoicesTableSkeleton } from '@/app/ui/skeletons';
 import { fetchInvoicesPages } from '@/app/lib/data';
-import { auth } from '@/auth';
+import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 
 export default async function Page(props: {
@@ -15,7 +15,7 @@ export default async function Page(props: {
     page?: string;
   }>;
 }) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect('/login');
 
   const searchParams = await props.searchParams;

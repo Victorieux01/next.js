@@ -1,9 +1,9 @@
-import { auth } from '@/auth';
+import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import SideNav from '@/app/ui/dashboard/sidenav';
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) redirect('/login');
   if ((session as any).twoFactorPending) redirect('/login/2fa');

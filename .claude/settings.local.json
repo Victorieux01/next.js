@@ -40,7 +40,10 @@
       "Bash(pnpm *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(jobs -l)"
+      "Bash(jobs -l)",
+      "Bash(xargs sed *)",
+      "Bash(node -e \"const t = require\\('next/cache'\\); console.log\\(Object.keys\\(t\\)\\)\")",
+      "Bash(node -e \"const t = require\\('next/cache'\\); console.log\\(t.revalidateTag.length\\)\")"
     ]
   }
 }
