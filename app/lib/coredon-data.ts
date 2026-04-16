@@ -74,34 +74,24 @@ export async function fetchAllProjects(userId: string): Promise<Project[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select('*')
+      .select(`
+        *,
+        coredon_project_revisions(*),
+        coredon_project_versions(*),
+        coredon_project_files(*),
+        coredon_project_disputes(*)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message || JSON.stringify(error));
 
-    const projects = data ?? [];
-    const ids = projects.map((p: any) => p.id as string);
-    const related = await fetchRelated(ids);
-
-    // Group related rows by project_id
-    const byId = (rows: any[]) =>
-      rows.reduce((acc: Record<string, any[]>, row) => {
-        (acc[row.project_id] ??= []).push(row);
-        return acc;
-      }, {});
-
-    const revMap  = byId(related.revisions);
-    const verMap  = byId(related.versions);
-    const fileMap = byId(related.files);
-    const dispMap = byId(related.disputes);
-
-    return projects.map((p: any) =>
+    return (data ?? []).map((p: any) =>
       serializeProject(p, {
-        revisions: revMap[p.id]  ?? [],
-        versions:  verMap[p.id]  ?? [],
-        files:     fileMap[p.id] ?? [],
-        disputes:  dispMap[p.id] ?? [],
+        revisions: p.coredon_project_revisions ?? [],
+        versions:  p.coredon_project_versions  ?? [],
+        files:     p.coredon_project_files      ?? [],
+        disputes:  p.coredon_project_disputes   ?? [],
       })
     );
   } catch (error) {
@@ -110,11 +100,19 @@ export async function fetchAllProjects(userId: string): Promise<Project[]> {
   }
 }
 
+const PROJECT_WITH_RELATED = `
+  *,
+  coredon_project_revisions(*),
+  coredon_project_versions(*),
+  coredon_project_files(*),
+  coredon_project_disputes(*)
+`;
+
 export async function fetchProjectById(id: string, userId: string): Promise<Project | null> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select('*')
+      .select(PROJECT_WITH_RELATED)
       .eq('id', id)
       .eq('user_id', userId)
       .single();
@@ -122,8 +120,12 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
-    const related = await fetchRelated([id]);
-    return serializeProject(data, related);
+    return serializeProject(data, {
+      revisions: data.coredon_project_revisions ?? [],
+      versions:  data.coredon_project_versions  ?? [],
+      files:     data.coredon_project_files      ?? [],
+      disputes:  data.coredon_project_disputes   ?? [],
+    });
   } catch (error) {
     console.error('fetchProjectById error:', error instanceof Error ? error.message : JSON.stringify(error));
     return null;
@@ -134,15 +136,19 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select('*')
+      .select(PROJECT_WITH_RELATED)
       .eq('id', id)
       .single();
 
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
-    const related = await fetchRelated([id]);
-    return serializeProject(data, related);
+    return serializeProject(data, {
+      revisions: data.coredon_project_revisions ?? [],
+      versions:  data.coredon_project_versions  ?? [],
+      files:     data.coredon_project_files      ?? [],
+      disputes:  data.coredon_project_disputes   ?? [],
+    });
   } catch (error) {
     console.error('fetchProjectByIdPublic error:', error instanceof Error ? error.message : JSON.stringify(error));
     return null;

@@ -82,6 +82,31 @@ export default function DashboardSkeleton() {
   );
 }
 
+export function PageSkeleton() {
+  return (
+    <div style={{ padding: '36px 40px 48px' }}>
+      <div style={{ marginBottom: 28 }}>
+        <Sk w={220} h={26} r={8} />
+        <Sk w={160} h={13} r={6} style={{ marginTop: 10 }} />
+      </div>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between' }}>
+          <Sk w={100} h={16} r={6} />
+          <Sk w={90} h={30} r={8} />
+        </div>
+        {[1,2,3,4,5,6].map(i => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderTop: i > 1 ? '1px solid var(--border-light)' : undefined, gap: 12 }}>
+            <Sk w={34} h={34} r={10} style={{ flexShrink: 0 }} />
+            <Sk w="40%" h={14} r={6} />
+            <Sk w="20%" h={13} r={6} style={{ marginLeft: 'auto' }} />
+            <Sk w={60} h={22} r={20} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function TableRowSkeleton() {
   return (
     <tr className="w-full border-b border-gray-100 last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-lg [&:first-child>td:last-child]:rounded-tr-lg [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg">

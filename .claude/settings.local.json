@@ -33,7 +33,14 @@
       "mcp__vercel__list_deployments",
       "mcp__vercel__get_deployment_build_logs",
       "Bash(dir:*)",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(npm --version)",
+      "Bash(pnpm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(jobs -l)"
     ]
   }
 }
