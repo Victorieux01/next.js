@@ -5,7 +5,9 @@ declare global {
   var _pgSql: ReturnType<typeof postgres> | undefined;
 }
 
-const sql = global._pgSql ?? postgres(process.env.POSTGRES_URL!, {
+const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
+
+const sql = global._pgSql ?? postgres(rawUrl, {
   ssl: 'require',
   prepare: false,   // required for Supabase pgBouncer (transaction mode)
   max: 1,           // pooler handles pooling; one connection per server instance is enough

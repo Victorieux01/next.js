@@ -1,7 +1,8 @@
 import postgres from 'postgres';
 import { NextResponse } from 'next/server';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
+const sql = postgres(rawUrl, { ssl: 'require' });
 
 export async function GET() {
   try {

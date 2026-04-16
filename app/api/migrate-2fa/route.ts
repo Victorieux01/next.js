@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+  const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
+  const sql = postgres(rawUrl, { ssl: 'require' });
   try {
     await sql`
       ALTER TABLE users
