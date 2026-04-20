@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { loadConnectAndInitialize, StripeConnectInstance } from '@stripe/connect-js';
+import { loadConnectAndInitialize, StripeConnectInstance } from '@stripe/connect-js/pure';
 import {
   ConnectComponentsProvider,
   ConnectAccountManagement,
