@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CoredonClient } from '@/app/lib/coredon-types';
 import { updateClient, createClient, deleteClient } from '@/app/lib/coredon-actions';
 import { useRouter } from 'next/navigation';
@@ -83,7 +84,7 @@ function ClientModal({
     onClose();
   }
 
-  return (
+  return createPortal(
     <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
       onClick={onClose}
@@ -152,7 +153,8 @@ function ClientModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
