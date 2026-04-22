@@ -1,11 +1,6 @@
 'use server';
 import supabase from './supabase';
-import { revalidatePath, revalidateTag } from 'next/cache';
-
-function invalidateUserCache(userId: string) {
-  revalidateTag(`projects-${userId}`, {});
-  revalidateTag(`clients-${userId}`, {});
-}
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail, sendApprovalEmail, sendRequestChangesEmail } from './sendgrid';
 import { auth } from '@/auth';
@@ -102,7 +97,6 @@ export async function createProject(formData: FormData) {
     }).catch(err => console.error('Contract email error:', err));
   }
 
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/projects');
   redirect('/dashboard/projects');
 }
@@ -110,7 +104,6 @@ export async function createProject(formData: FormData) {
 export async function updateProjectStatus(id: string, status: string) {
   const userId = await getUserId();
   await supabase.from('coredon_projects').update({ status }).eq('id', id).eq('user_id', userId);
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/projects');
   revalidatePath(`/dashboard/projects/${id}`);
 }
@@ -118,7 +111,6 @@ export async function updateProjectStatus(id: string, status: string) {
 export async function deleteProject(id: string) {
   const userId = await getUserId();
   await supabase.from('coredon_projects').delete().eq('id', id).eq('user_id', userId);
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/projects');
   redirect('/dashboard/projects');
 }
@@ -127,7 +119,6 @@ export async function addRevision(projectId: string, note: string) {
   const userId = await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_project_revisions').insert({ project_id: projectId, date, note });
-  invalidateUserCache(userId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
@@ -135,7 +126,6 @@ export async function addVersion(projectId: string, fileName: string) {
   const userId = await getUserId();
   const date = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_project_versions').insert({ project_id: projectId, date, note: fileName });
-  invalidateUserCache(userId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
@@ -146,7 +136,6 @@ export async function openDispute(projectId: string, reason: string) {
     supabase.from('coredon_project_disputes').insert({ project_id: projectId, reason, date, status: 'Open' }),
     supabase.from('coredon_projects').update({ status: 'Dispute' }).eq('id', projectId),
   ]);
-  invalidateUserCache(userId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
@@ -167,7 +156,6 @@ export async function resolveDispute(disputeId: string, projectId: string, resol
       await sendDisputeRejectionEmail(proj.email, proj.name, reason).catch(() => {});
     }
   }
-  invalidateUserCache(userId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
@@ -178,14 +166,12 @@ export async function addDisputeNote(disputeId: string, note: string, projectId:
   const date = new Date().toISOString().slice(0, 10);
   const newReason = currentReason + `\n\n── Internal Note (${date}) ──\n${note}`;
   await supabase.from('coredon_project_disputes').update({ reason: newReason }).eq('id', disputeId);
-  invalidateUserCache(userId);
   revalidatePath(`/dashboard/projects/${projectId}`);
 }
 
 export async function toggleProjectPin(id: string, pinned: boolean) {
   const userId = await getUserId();
   await supabase.from('coredon_projects').update({ pinned }).eq('id', id).eq('user_id', userId);
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/projects');
   revalidatePath('/dashboard');
 }
@@ -207,7 +193,6 @@ export async function createClient(formData: FormData) {
     note: note || 'New Client',
     outstanding,
   });
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/clients');
 }
 
@@ -224,14 +209,12 @@ export async function updateClient(id: string, formData: FormData) {
   await supabase.from('coredon_clients').update({
     company, name, email, phone, address, note, outstanding,
   }).eq('id', id).eq('user_id', userId);
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/clients');
 }
 
 export async function deleteClient(id: string) {
   const userId = await getUserId();
   await supabase.from('coredon_clients').delete().eq('id', id).eq('user_id', userId);
-  invalidateUserCache(userId);
   revalidatePath('/dashboard/clients');
 }
 

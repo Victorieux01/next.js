@@ -1,4 +1,3 @@
-import { unstable_cache } from 'next/cache';
 import supabase from './supabase';
 import { Project, CoredonClient } from './coredon-types';
 
@@ -91,11 +90,9 @@ async function _fetchAllProjects(userId: string): Promise<Project[]> {
   }
 }
 
-export const fetchAllProjects = (userId: string) =>
-  unstable_cache(_fetchAllProjects, ['projects'], {
-    tags: [`projects-${userId}`],
-    revalidate: 30,
-  })(userId);
+export function fetchAllProjects(userId: string) {
+  return _fetchAllProjects(userId);
+}
 
 async function _fetchAllClients(userId: string): Promise<CoredonClient[]> {
   try {
@@ -113,11 +110,9 @@ async function _fetchAllClients(userId: string): Promise<CoredonClient[]> {
   }
 }
 
-export const fetchAllClients = (userId: string) =>
-  unstable_cache(_fetchAllClients, ['clients'], {
-    tags: [`clients-${userId}`],
-    revalidate: 30,
-  })(userId);
+export function fetchAllClients(userId: string) {
+  return _fetchAllClients(userId);
+}
 
 export async function fetchDashboardData(userId: string) {
   try {
