@@ -1,10 +1,17 @@
 import postgres from 'postgres';
 import { NextResponse } from 'next/server';
 
-const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
-const sql = postgres(rawUrl, { ssl: 'require' });
+let _sql: ReturnType<typeof postgres> | null = null;
+function getSql() {
+  if (!_sql) {
+    const rawUrl = (process.env.POSTGRES_URL ?? '').replace(/^["']|["']$/g, '');
+    _sql = postgres(rawUrl, { ssl: 'require' });
+  }
+  return _sql;
+}
 
 export async function GET() {
+  const sql = getSql();
   try {
     // Create tables
     await sql`
