@@ -855,7 +855,7 @@ export default function DashboardHome({ projects, user }: Props) {
           <div className="stat-row" style={{ marginBottom: 0 }}>
             {/* Active Escrow */}
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+              <div className="stat-icon" style={{ background: '#c9d4e6' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                 </svg>
@@ -870,7 +870,7 @@ export default function DashboardHome({ projects, user }: Props) {
 
             {/* Pending — middle */}
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+              <div className="stat-icon" style={{ background: '#c9d4e6' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
                   <polyline points="12 6 12 12 16 14"/>
@@ -885,7 +885,7 @@ export default function DashboardHome({ projects, user }: Props) {
 
             {/* Next Deadline */}
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#2c2c2c' }}>
+              <div className="stat-icon" style={{ background: '#c9d4e6' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                   <line x1="16" y1="2" x2="16" y2="6"/>
