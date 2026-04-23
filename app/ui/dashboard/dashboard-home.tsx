@@ -46,8 +46,9 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
   // Build earnData the same way as the earnings tab
   const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const byKey: Record<string, { month: string; year: string; v: number }> = {};
-  projects.filter(p => p.status === 'Released' && p.released_date).forEach(p => {
-    const d = new Date(p.released_date!);
+  projects.filter(p => p.status === 'Released').forEach(p => {
+    const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
+    const d = new Date(dateStr);
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     if (!byKey[key]) byKey[key] = { month: moNames[d.getMonth()], year: String(d.getFullYear()), v: 0 };
     byKey[key].v += p.amount;
@@ -883,10 +884,25 @@ export default function DashboardHome({ projects, user }: Props) {
               <div className="stat-bar" style={{ background: '#94A3B8' }} />
             </div>
 
+            {/* Released */}
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#DBEAFE' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <div className="stat-card-inner">
+                <div className="stat-label">Released</div>
+                <div className="stat-val">{fmt(released)}</div>
+                {released > 0 && <div className="stat-delta" style={{ color: '#0984E3' }}>↑ Paid out</div>}
+              </div>
+              <div className="stat-bar" style={{ background: '#0984E3' }} />
+            </div>
+
             {/* Next Deadline */}
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#c9d4e6' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <div className="stat-icon" style={{ background: '#DBEAFE' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                   <line x1="16" y1="2" x2="16" y2="6"/>
                   <line x1="8" y1="2" x2="8" y2="6"/>
@@ -899,7 +915,7 @@ export default function DashboardHome({ projects, user }: Props) {
                   {nextDeadlineProject ? nextDeadlineProject.date : '—'}
                 </div>
                 {nextDeadlineProject && (
-                  <div className="stat-delta" style={{ color: '#0984E3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div className="stat-delta" style={{ color: '#F59E0B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {nextDeadlineProject.name}
                   </div>
                 )}

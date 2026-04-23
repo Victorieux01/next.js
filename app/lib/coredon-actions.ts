@@ -103,7 +103,10 @@ export async function createProject(formData: FormData) {
 
 export async function updateProjectStatus(id: string, status: string) {
   const userId = await getUserId();
-  await supabase.from('coredon_projects').update({ status }).eq('id', id).eq('user_id', userId);
+  const update: Record<string, string> = { status };
+  if (status === 'Funded')   update.prepaid_date   = new Date().toISOString().slice(0, 10);
+  if (status === 'Released') update.released_date  = new Date().toISOString().slice(0, 10);
+  await supabase.from('coredon_projects').update(update).eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/projects');
   revalidatePath(`/dashboard/projects/${id}`);

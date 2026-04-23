@@ -15,10 +15,11 @@ function fmt(n: number): string {
 
 function computeMonthlyEarnings(projects: Project[]) {
   const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const released = projects.filter(p => p.status === 'Released' && p.released_date);
+  const released = projects.filter(p => p.status === 'Released');
   const byMonth: Record<string, number> = {};
   released.forEach(p => {
-    const d = new Date(p.released_date!);
+    const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
+    const d = new Date(dateStr);
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     byMonth[key] = (byMonth[key] || 0) + p.amount;
   });
