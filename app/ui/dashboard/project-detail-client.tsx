@@ -329,6 +329,22 @@ export default function ProjectDetailClient({ project: p }: Props) {
         <div className="card" style={{ width: 240, padding: 28, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Actions</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+            {p.status === 'Pending' && (
+              <button
+                className="btn-action"
+                style={{ background: '#D97706', color: '#fff', border: 'none', fontWeight: 700 }}
+                disabled={submitting}
+                onClick={async () => {
+                  if (!confirm('Mark this project as Funded? (Dev shortcut)')) return;
+                  setSubmitting(true);
+                  await updateProjectStatus(p.id, 'Funded');
+                  setSubmitting(false);
+                  router.refresh();
+                }}
+              >
+                ⚡ Fund Project (Dev)
+              </button>
+            )}
             {p.status === 'Funded' && (
               <button
                 className="btn-action"

@@ -104,8 +104,11 @@ export async function createProject(formData: FormData) {
 export async function updateProjectStatus(id: string, status: string) {
   const userId = await getUserId();
   await supabase.from('coredon_projects').update({ status }).eq('id', id).eq('user_id', userId);
+  revalidatePath('/dashboard');
   revalidatePath('/dashboard/projects');
   revalidatePath(`/dashboard/projects/${id}`);
+  revalidatePath('/dashboard/earnings');
+  revalidatePath('/dashboard/history');
 }
 
 export async function deleteProject(id: string) {
