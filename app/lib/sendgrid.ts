@@ -71,9 +71,23 @@ export async function sendContractEmail({
                   </td>
                 </tr>
               </table>
-              <a href="${portalUrl}" style="display:block;background:#1a8cff;color:#fff;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Your Project Portal →</a>
-              <p style="margin:16px 0 0;font-size:12px;color:#444;text-align:center;line-height:1.5">
-                This link always shows the latest status of your project.
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 20px;background:#111;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px 20px">
+                <tr>
+                  <td>
+                    <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#555;letter-spacing:0.08em;text-transform:uppercase">Your project portal lets you</p>
+                    <table cellpadding="0" cellspacing="0" role="presentation">
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;View contract details &amp; timeline</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Fund the escrow securely via Stripe</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Chat directly with your provider</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;View &amp; download uploaded files</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Approve deliverables to release funds</td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <a href="${portalUrl}" style="display:block;background:#6366F1;color:#fff;border-radius:10px;padding:18px;font-size:16px;font-weight:800;text-decoration:none;text-align:center;letter-spacing:0.02em">Open My Project Portal →</a>
+              <p style="margin:14px 0 0;font-size:12px;color:#444;text-align:center;line-height:1.5">
+                This link is private to you and always shows the latest project status.
               </p>
             </td></tr>
           </table>

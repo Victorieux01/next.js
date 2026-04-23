@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
 import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus } from '@/app/lib/coredon-actions';
+import ChatSection from './chat-section';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -52,9 +53,9 @@ function parseDisputeReason(raw: string): { original: string; notes: { date: str
   return { original, notes };
 }
 
-interface Props { project: Project }
+interface Props { project: Project; providerName: string }
 
-export default function ProjectDetailClient({ project: p }: Props) {
+export default function ProjectDetailClient({ project: p, providerName }: Props) {
   const router = useRouter();
 
   // Dispute modal state: null | 'reason' | 'confirm'
@@ -432,6 +433,14 @@ export default function ProjectDetailClient({ project: p }: Props) {
 
       <UploadSection projectId={p.id} versions={p.versions || []} clientEmail={p.email} clientName={p.name} projectName={p.name} disabled={isDispute} />
       <FilesSection files={p.files || []} />
+
+      <ChatSection
+        projectId={p.id}
+        messages={p.messages || []}
+        side="provider"
+        senderName={providerName}
+        onRefresh={() => router.refresh()}
+      />
 
       {/* ── Dispute Step 1 Modal: Reason ── */}
       {disputeStep === 'reason' && (

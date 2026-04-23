@@ -10,5 +10,5 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const project = await fetchProjectById(id, session.user.id);
   if (!project) notFound();
-  return <ProjectDetailClient project={project} />;
+  return <ProjectDetailClient project={project} providerName={session.user.name ?? 'Provider'} />;
 }

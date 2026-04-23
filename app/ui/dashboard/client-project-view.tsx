@@ -1,7 +1,19 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
 import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
+import ChatSection from './chat-section';
+
+async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string) {
+  const res = await fetch('/api/fund-project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, amount, email, projectName }),
+  });
+  const data = await res.json();
+  if (data.url) window.location.href = data.url;
+}
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -55,10 +67,16 @@ function EventIcon({ type }: { type: string }) {
 interface Props { project: Project }
 
 export default function ClientProjectView({ project: initialProject }: Props) {
+  const router = useRouter();
   const [p, setP] = useState(initialProject);
+  const isPending  = p.status === 'Pending';
   const isDispute  = p.status === 'Dispute';
   const isFinished = p.status === 'Released';
   const isFunded   = p.status === 'Funded';
+
+  // Pay / Fund state
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState('');
 
   // Approve & Release
   const [approvePending, startApprove] = useTransition();
@@ -216,6 +234,68 @@ export default function ClientProjectView({ project: initialProject }: Props) {
           )}
         </div>
       </div>
+
+      {/* Payment Panel — shown when still Pending */}
+      {isPending && (
+        <div className="card" style={{ padding: 28, marginBottom: 20, border: '1px solid rgba(99,102,241,0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Fund your project</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
+                Your payment is held securely in escrow and only released once you approve the deliverables.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Amount due</div>
+              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em' }}>{fmt(p.amount)}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'right' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Secured by</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Stripe Escrow</div>
+            </div>
+          </div>
+
+          {payError && <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{payError}</div>}
+
+          <button
+            disabled={paying}
+            onClick={async () => {
+              setPaying(true);
+              setPayError('');
+              try {
+                await redirectToCheckout(p.id, p.amount, p.email ?? '', p.name);
+              } catch {
+                setPayError('Could not start checkout. Please try again.');
+                setPaying(false);
+              }
+            }}
+            style={{
+              width: '100%', padding: '14px 20px', borderRadius: 10,
+              background: paying ? '#4338CA' : '#6366F1', color: '#fff',
+              fontWeight: 700, fontSize: 15, border: 'none',
+              cursor: paying ? 'wait' : 'pointer',
+              transition: 'background 0.15s',
+            }}
+          >
+            {paying ? 'Redirecting to checkout…' : `Pay ${fmt(p.amount)} — Fund Escrow`}
+          </button>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Secured by Stripe · Funds released only upon your approval</span>
+          </div>
+        </div>
+      )}
 
       {/* Escrow Action Panel — only shown while Funded */}
       {isFunded && !approved && (
@@ -381,6 +461,15 @@ export default function ClientProjectView({ project: initialProject }: Props) {
           );
         })}
       </div>
+
+      {/* Chat */}
+      <ChatSection
+        projectId={p.id}
+        messages={p.messages || []}
+        side="client"
+        senderName={p.name || p.email?.split('@')[0] || 'Client'}
+        onRefresh={() => router.refresh()}
+      />
 
       {/* Files */}
       <ClientFilesSection files={p.files || []} />

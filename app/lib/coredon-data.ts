@@ -9,7 +9,7 @@ function toStr(v: unknown): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function serializeProject(row: any, related: {
-  revisions: any[]; versions: any[]; files: any[]; disputes: any[];
+  revisions: any[]; versions: any[]; files: any[]; disputes: any[]; messages: any[];
 }): Project {
   return {
     ...row,
@@ -29,6 +29,7 @@ function serializeProject(row: any, related: {
       url: `${process.env.SUPABASE_URL}/storage/v1/object/public/project-files/${f.project_id}/${encodeURIComponent(f.name)}`,
     })),
     disputes: related.disputes,
+    messages: related.messages.map((m: any) => ({ ...m, created_at: toStr(m.created_at) })),
   };
 }
 
@@ -41,47 +42,50 @@ function serializeClient(row: any): CoredonClient {
   };
 }
 
-// Fetch all related rows for a set of project IDs in parallel
-async function fetchRelated(projectIds: string[]) {
-  if (projectIds.length === 0) return { revisions: [], versions: [], files: [], disputes: [] };
-
-  const [r, v, f, d] = await Promise.all([
-    supabase.from('coredon_project_revisions').select('*').in('project_id', projectIds),
-    supabase.from('coredon_project_versions').select('*').in('project_id', projectIds),
-    supabase.from('coredon_project_files').select('*').in('project_id', projectIds),
-    supabase.from('coredon_project_disputes').select('*').in('project_id', projectIds),
-  ]);
-
-  return {
-    revisions: r.data ?? [],
-    versions:  v.data ?? [],
-    files:     f.data ?? [],
-    disputes:  d.data ?? [],
-  };
+// Fetch messages separately — gracefully returns [] if the table doesn't exist yet
+async function fetchMessages(projectIds: string[]): Promise<any[]> {
+  if (projectIds.length === 0) return [];
+  try {
+    const { data } = await supabase
+      .from('coredon_project_messages')
+      .select('*')
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: true });
+    return data ?? [];
+  } catch {
+    return [];
+  }
 }
+
+const PROJECT_BASE = `
+  *,
+  coredon_project_revisions(*),
+  coredon_project_versions(*),
+  coredon_project_files(*),
+  coredon_project_disputes(*)
+`;
 
 async function _fetchAllProjects(userId: string): Promise<Project[]> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select(`
-        *,
-        coredon_project_revisions(*),
-        coredon_project_versions(*),
-        coredon_project_files(*),
-        coredon_project_disputes(*)
-      `)
+      .select(PROJECT_BASE)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message || JSON.stringify(error));
 
-    return (data ?? []).map((p: any) =>
+    const rows = data ?? [];
+    const ids = rows.map((p: any) => p.id as string);
+    const messages = await fetchMessages(ids);
+
+    return rows.map((p: any) =>
       serializeProject(p, {
         revisions: p.coredon_project_revisions ?? [],
         versions:  p.coredon_project_versions  ?? [],
         files:     p.coredon_project_files      ?? [],
         disputes:  p.coredon_project_disputes   ?? [],
+        messages:  messages.filter((m: any) => m.project_id === p.id),
       })
     );
   } catch (error) {
@@ -124,19 +128,11 @@ export async function fetchDashboardData(userId: string) {
   }
 }
 
-const PROJECT_WITH_RELATED = `
-  *,
-  coredon_project_revisions(*),
-  coredon_project_versions(*),
-  coredon_project_files(*),
-  coredon_project_disputes(*)
-`;
-
 export async function fetchProjectById(id: string, userId: string): Promise<Project | null> {
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select(PROJECT_WITH_RELATED)
+      .select(PROJECT_BASE)
       .eq('id', id)
       .eq('user_id', userId)
       .single();
@@ -144,11 +140,14 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
+    const messages = await fetchMessages([id]);
+
     return serializeProject(data, {
       revisions: data.coredon_project_revisions ?? [],
       versions:  data.coredon_project_versions  ?? [],
       files:     data.coredon_project_files      ?? [],
       disputes:  data.coredon_project_disputes   ?? [],
+      messages,
     });
   } catch (error) {
     console.error('fetchProjectById error:', error instanceof Error ? error.message : JSON.stringify(error));
@@ -160,18 +159,21 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
   try {
     const { data, error } = await supabase
       .from('coredon_projects')
-      .select(PROJECT_WITH_RELATED)
+      .select(PROJECT_BASE)
       .eq('id', id)
       .single();
 
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
+    const messages = await fetchMessages([id]);
+
     return serializeProject(data, {
       revisions: data.coredon_project_revisions ?? [],
       versions:  data.coredon_project_versions  ?? [],
       files:     data.coredon_project_files      ?? [],
       disputes:  data.coredon_project_disputes   ?? [],
+      messages,
     });
   } catch (error) {
     console.error('fetchProjectByIdPublic error:', error instanceof Error ? error.message : JSON.stringify(error));
@@ -185,7 +187,7 @@ export async function markProjectFundedByClient(id: string): Promise<void> {
       .from('coredon_projects')
       .update({ status: 'Funded', prepaid_date: new Date().toISOString().slice(0, 10) })
       .eq('id', id)
-      .eq('status', 'Pending'); // only transitions from Pending → Funded
+      .eq('status', 'Pending');
   } catch (error) {
     console.error('markProjectFundedByClient error:', error instanceof Error ? error.message : JSON.stringify(error));
   }
@@ -203,4 +205,3 @@ export async function fetchUserSettings(userId: string): Promise<{ plan: string;
     return null;
   }
 }
-

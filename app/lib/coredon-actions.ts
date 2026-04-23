@@ -375,6 +375,52 @@ export async function clientRequestChanges(
   }
 }
 
+// ── Chat Messages ─────────────────────────────────────────────────────────────
+
+// Provider sends a message (requires auth session)
+export async function sendMessageAsProvider(
+  projectId: string,
+  content: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { name } = await getUserSession();
+    await supabase.from('coredon_project_messages').insert({
+      project_id:  projectId,
+      sender:      'provider',
+      sender_name: name,
+      content,
+    });
+    revalidatePath(`/dashboard/projects/${projectId}`);
+    revalidatePath(`/client/${projectId}`);
+    return { success: true };
+  } catch (err) {
+    console.error('sendMessageAsProvider error:', err);
+    return { success: false, error: 'Failed to send message.' };
+  }
+}
+
+// Client sends a message (no auth — public portal)
+export async function sendMessageAsClient(
+  projectId: string,
+  senderName: string,
+  content: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await supabase.from('coredon_project_messages').insert({
+      project_id:  projectId,
+      sender:      'client',
+      sender_name: senderName,
+      content,
+    });
+    revalidatePath(`/client/${projectId}`);
+    revalidatePath(`/dashboard/projects/${projectId}`);
+    return { success: true };
+  } catch (err) {
+    console.error('sendMessageAsClient error:', err);
+    return { success: false, error: 'Failed to send message.' };
+  }
+}
+
 // ── Preview Notification ──────────────────────────────────────────────────────
 export async function sendPreviewNotification(
   projectId: string,

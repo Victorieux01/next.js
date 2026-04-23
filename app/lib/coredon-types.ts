@@ -56,6 +56,16 @@ export interface Project {
   versions: ProjectVersion[];
   files: ProjectFile[];
   disputes: ProjectDispute[];
+  messages: ProjectMessage[];
+}
+
+export interface ProjectMessage {
+  id: string;
+  project_id: string;
+  sender: 'client' | 'provider';
+  sender_name: string;
+  content: string;
+  created_at: string;
 }
 
 export interface CoredonClient {
