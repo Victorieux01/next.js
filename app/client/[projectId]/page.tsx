@@ -1,4 +1,4 @@
-import { fetchProjectByIdPublic, markProjectFundedByClient } from '@/app/lib/coredon-data';
+import { fetchProjectByIdPublic, markProjectFundedByClient, fetchProjectsByEmail } from '@/app/lib/coredon-data';
 import { notFound } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { stripe } from '@/app/lib/stripe';
@@ -37,5 +37,7 @@ export default async function ClientPortalPage({
   const project = await fetchProjectByIdPublic(projectId);
   if (!project) notFound();
 
-  return <ClientProjectView project={project} />;
+  const allProjects = await fetchProjectsByEmail(project.email ?? '');
+
+  return <ClientProjectView project={project} allProjects={allProjects} />;
 }

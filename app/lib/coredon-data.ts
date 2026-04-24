@@ -181,6 +181,52 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
   }
 }
 
+export async function fetchProjectsByEmail(email: string): Promise<{
+  id: string; name: string; status: string; amount: number;
+  start_date: string; expected_date: string; color: string; initials: string;
+  user_id: string; provider_name: string;
+}[]> {
+  if (!email) return [];
+  try {
+    const { data, error } = await supabase
+      .from('coredon_projects')
+      .select('id, name, status, amount, start_date, expected_date, color, initials, user_id')
+      .eq('email', email)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+
+    // Fetch provider names for each unique user_id
+    const userIds = [...new Set(data.map((p: any) => p.user_id as string))];
+    const providerMap: Record<string, string> = {};
+    await Promise.all(userIds.map(async (uid) => {
+      try {
+        const { data: s } = await supabase
+          .from('coredon_user_settings')
+          .select('first_name, last_name')
+          .eq('user_id', uid)
+          .single();
+        providerMap[uid] = s ? `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() : '';
+      } catch { /* ignore */ }
+    }));
+
+    return data.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      amount: parseFloat(p.amount) || 0,
+      start_date: toStr(p.start_date),
+      expected_date: toStr(p.expected_date),
+      color: p.color,
+      initials: p.initials,
+      user_id: p.user_id,
+      provider_name: providerMap[p.user_id] || 'Your Provider',
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function markProjectFundedByClient(id: string): Promise<void> {
   try {
     await supabase
