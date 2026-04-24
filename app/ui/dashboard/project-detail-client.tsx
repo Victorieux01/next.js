@@ -375,6 +375,15 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
             </button>
             <button className="btn-action" onClick={() => setRevModal(true)}>Add Revision Note</button>
             <button className="btn-action" onClick={handleExportPdf}>Export as PDF</button>
+            <a
+              href={`/client/${p.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-action"
+              style={{ textAlign: 'center', textDecoration: 'none', display: 'block', background: 'rgba(99,102,241,0.12)', color: '#6366F1', fontWeight: 700, border: '1px solid rgba(99,102,241,0.25)' }}
+            >
+              View Client Portal
+            </a>
             <div style={{ flex: 1 }} />
             <button className="btn-danger" onClick={async () => {
               if (confirm('Delete this project? This cannot be undone.')) await deleteProject(p.id);
