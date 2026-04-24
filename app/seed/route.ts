@@ -2,10 +2,17 @@ import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
-const sql = postgres(rawUrl, { ssl: 'require' });
+let _sql: ReturnType<typeof postgres> | null = null;
+function getSql() {
+  if (!_sql) {
+    const rawUrl = (process.env.POSTGRES_URL ?? '').replace(/^["']|["']$/g, '');
+    _sql = postgres(rawUrl, { ssl: 'require' });
+  }
+  return _sql;
+}
 
 export async function GET() {
+  const sql = getSql();
   try {
     // Create tables
     await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;

@@ -5,16 +5,16 @@ declare global {
   var _pgSql: ReturnType<typeof postgres> | undefined;
 }
 
-const rawUrl = process.env.POSTGRES_URL!.replace(/^["']|["']$/g, '');
-
-const sql = global._pgSql ?? postgres(rawUrl, {
-  ssl: 'require',
-  prepare: false,   // required for Supabase pgBouncer (transaction mode)
-  max: 1,           // pooler handles pooling; one connection per server instance is enough
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  global._pgSql = sql;
+export function getSql(): ReturnType<typeof postgres> {
+  if (global._pgSql) return global._pgSql;
+  const rawUrl = (process.env.POSTGRES_URL ?? '').replace(/^["']|["']$/g, '');
+  const sql = postgres(rawUrl, {
+    ssl: 'require',
+    prepare: false,
+    max: 1,
+  });
+  if (process.env.NODE_ENV !== 'production') {
+    global._pgSql = sql;
+  }
+  return sql;
 }
-
-export default sql;
