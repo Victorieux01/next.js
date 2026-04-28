@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { stripe } from '@/app/lib/stripe';
 import ClientProjectView from '@/app/ui/dashboard/client-project-view';
-import { verifyPortalToken } from '@/app/lib/portal-token';
+import { verifyPortalToken, generatePortalToken } from '@/app/lib/portal-token';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +40,11 @@ export default async function ClientPortalPage({
   const project = await fetchProjectByIdPublic(projectId);
   if (!project) notFound();
 
-  const allProjects = await fetchProjectsByEmail(project.email ?? '');
+  const rawProjects = await fetchProjectsByEmail(project.email ?? '');
+  const allProjects = rawProjects.map(p => ({
+    ...p,
+    token: generatePortalToken(p.id),
+  }));
 
   return <ClientProjectView project={project} allProjects={allProjects} />;
 }
