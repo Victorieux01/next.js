@@ -453,7 +453,6 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
         messages={p.messages || []}
         side="provider"
         senderName={providerName}
-        onRefresh={() => router.refresh()}
       />
 
       {/* ── Dispute Step 1 Modal: Reason ── */}

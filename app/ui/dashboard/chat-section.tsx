@@ -1,21 +1,49 @@
 'use client';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { ProjectMessage } from '@/app/lib/coredon-types';
 import { sendMessageAsProvider, sendMessageAsClient } from '@/app/lib/coredon-actions';
+
+const POLL_MS = 3000;
 
 interface Props {
   projectId: string;
   messages: ProjectMessage[];
   side: 'provider' | 'client';
   senderName: string;
-  onRefresh: () => void;
+  token?: string;
 }
 
-export default function ChatSection({ projectId, messages, side, senderName, onRefresh }: Props) {
+export default function ChatSection({ projectId, messages: initialMessages, side, senderName, token }: Props) {
+  const [messages, setMessages] = useState<ProjectMessage[]>(initialMessages);
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const fetchMessages = useCallback(async () => {
+    try {
+      const url = token
+        ? `/api/project-messages/${projectId}?token=${encodeURIComponent(token)}`
+        : `/api/project-messages/${projectId}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      setMessages(data.messages ?? []);
+    } catch {
+      // ignore silently
+    }
+  }, [projectId, token]);
+
+  // Poll for new messages
+  useEffect(() => {
+    const id = setInterval(fetchMessages, POLL_MS);
+    return () => clearInterval(id);
+  }, [fetchMessages]);
+
+  // Sync when RSC re-renders (e.g. initial load)
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [initialMessages]);
 
   const sorted = [...messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -44,7 +72,7 @@ export default function ChatSection({ projectId, messages, side, senderName, onR
         : await sendMessageAsClient(projectId, senderName, text);
       if (res.success) {
         setContent('');
-        onRefresh();
+        await fetchMessages();
       } else {
         setError(res.error ?? 'Failed to send.');
       }
@@ -81,7 +109,6 @@ export default function ChatSection({ projectId, messages, side, senderName, onR
 
       {/* Messages */}
       <div style={{
-        maxHeight: 340, overflowY: 'auto',
         padding: sorted.length === 0 ? '24px 20px' : '16px 20px',
         display: 'flex', flexDirection: 'column', gap: 12,
       }}>

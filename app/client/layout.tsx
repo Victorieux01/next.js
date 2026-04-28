@@ -1,3 +1,6 @@
+import ClientPortalNav from '@/app/ui/client-portal-nav';
+import { Suspense } from 'react';
+
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <div id="main-wrapper">
@@ -15,26 +18,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className="logo-text">Coredon</span>
           </div>
 
-          <nav id="nav">
-            <div style={{
-              padding: '8px 14px',
-              fontSize: 11,
-              fontWeight: 700,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: 4,
-            }}>
-              Client Portal
-            </div>
-            <div className="nb active" style={{ cursor: 'default' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                <polyline points="9 22 9 12 15 12 15 22"/>
-              </svg>
-              <span className="nb-label">Project Overview</span>
-            </div>
-          </nav>
+          <Suspense>
+            <ClientPortalNav />
+          </Suspense>
         </div>
 
         <div className="sb-bottom">

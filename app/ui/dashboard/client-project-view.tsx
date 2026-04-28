@@ -77,7 +77,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
   const searchParams = useSearchParams();
   const portalToken = searchParams.get('token') ?? '';
   const [p, setP] = useState(initialProject);
-  const [tab, setTab] = useState<'overview' | 'shared'>('overview');
+  const tab = searchParams.get('view') === 'shared' ? 'shared' : 'overview';
   const isPending  = p.status === 'Pending';
   const isDispute  = p.status === 'Dispute';
   const isFinished = p.status === 'Released';
@@ -156,42 +156,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
         Overview of your project and deliverables for {p.name}.
       </p>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 24, borderBottom: '1px solid var(--border-light)' }}>
-        {(['overview', 'shared'] as const).map((t) => {
-          const labels = { overview: 'Overview', shared: 'Shared with me' };
-          const isActive = tab === t;
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                padding: '8px 16px', fontSize: 14, fontWeight: isActive ? 700 : 500,
-                color: isActive ? 'var(--blue)' : 'var(--text-muted)',
-                background: 'none', border: 'none', cursor: 'pointer',
-                borderBottom: isActive ? '2px solid var(--blue)' : '2px solid transparent',
-                marginBottom: -1, transition: 'color 0.15s',
-                fontFamily: 'inherit',
-              }}
-            >
-              {labels[t]}
-              {t === 'shared' && allProjects.length > 0 && (
-                <span style={{
-                  marginLeft: 6, fontSize: 11, fontWeight: 700,
-                  background: isActive ? 'rgba(9,132,227,0.12)' : 'var(--surface)',
-                  color: isActive ? 'var(--blue)' : 'var(--text-muted)',
-                  borderRadius: 20, padding: '2px 7px',
-                  border: '1px solid var(--border-light)',
-                }}>
-                  {allProjects.length}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Shared with me tab ── */}
+      {/* ── Shared with me view ── */}
       {tab === 'shared' && (
         <SharedWithMeSection projects={allProjects} currentId={p.id} />
       )}
@@ -520,7 +485,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
         messages={p.messages || []}
         side="client"
         senderName={p.name || p.email?.split('@')[0] || 'Client'}
-        onRefresh={() => router.refresh()}
+        token={portalToken}
       />
 
       {/* Files */}
