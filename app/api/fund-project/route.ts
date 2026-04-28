@@ -1,10 +1,9 @@
-'use server';
 import { NextResponse } from 'next/server';
 import { stripe } from '@/app/lib/stripe';
 
 export async function POST(req: Request) {
   try {
-    const { projectId, amount, email, projectName } = await req.json();
+    const { projectId, amount, email, projectName, token } = await req.json();
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app';
 
@@ -29,8 +28,8 @@ export async function POST(req: Request) {
         metadata: { projectId },
       },
       metadata: { projectId },
-      success_url: `${appUrl}/client/${projectId}?funded=1&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${appUrl}/client/${projectId}`,
+      success_url: `${appUrl}/client/${projectId}?token=${token}&funded=1&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${appUrl}/client/${projectId}?token=${token}`,
     });
 
     return NextResponse.json({ url: session.url });

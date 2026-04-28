@@ -1,15 +1,15 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
 import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
 import ChatSection from './chat-section';
 
-async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string) {
+async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string, token: string) {
   const res = await fetch('/api/fund-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, amount, email, projectName }),
+    body: JSON.stringify({ projectId, amount, email, projectName, token }),
   });
   const data = await res.json();
   if (data.url) window.location.href = data.url;
@@ -74,6 +74,8 @@ interface Props { project: Project; allProjects?: ClientProjectSummary[] }
 
 export default function ClientProjectView({ project: initialProject, allProjects = [] }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const portalToken = searchParams.get('token') ?? '';
   const [p, setP] = useState(initialProject);
   const isPending  = p.status === 'Pending';
   const isDispute  = p.status === 'Dispute';
@@ -277,7 +279,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
               setPaying(true);
               setPayError('');
               try {
-                await redirectToCheckout(p.id, p.amount, p.email ?? '', p.name);
+                await redirectToCheckout(p.id, p.amount, p.email ?? '', p.name, portalToken);
               } catch {
                 setPayError('Could not start checkout. Please try again.');
                 setPaying(false);

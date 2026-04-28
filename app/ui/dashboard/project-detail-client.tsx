@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project, ProjectDispute } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus } from '@/app/lib/coredon-actions';
+import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus, sendClientPortalLink } from '@/app/lib/coredon-actions';
 import ChatSection from './chat-section';
 
 function fmt(n: number): string {
@@ -72,6 +72,7 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
 
   // Loading states
   const [submitting, setSubmitting] = useState(false);
+  const [portalState, setPortalState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   const isDispute  = p.status === 'Dispute';
   const isFinished = p.status === 'Released';
@@ -85,7 +86,7 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
     }
   }
 
-  const shortId = p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
+  const shortId = p.project_code ?? p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
   const events = [
     ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Stripe Connect') }] : []),
@@ -375,15 +376,19 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
             </button>
             <button className="btn-action" onClick={() => setRevModal(true)}>Add Revision Note</button>
             <button className="btn-action" onClick={handleExportPdf}>Export as PDF</button>
-            <a
-              href={`/client/${p.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
               className="btn-action"
-              style={{ textAlign: 'center', textDecoration: 'none', display: 'block', background: 'rgba(99,102,241,0.12)', color: '#6366F1', fontWeight: 700, border: '1px solid rgba(99,102,241,0.25)' }}
+              style={{ background: 'rgba(99,102,241,0.12)', color: portalState === 'sent' ? '#00C896' : portalState === 'error' ? '#EF4444' : '#6366F1', fontWeight: 700, border: `1px solid ${portalState === 'sent' ? 'rgba(0,200,150,0.3)' : portalState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(99,102,241,0.25)'}`, opacity: portalState === 'sending' ? 0.6 : 1 }}
+              disabled={portalState === 'sending'}
+              onClick={async () => {
+                setPortalState('sending');
+                const result = await sendClientPortalLink(p.id, p.email, p.name, p.name);
+                setPortalState(result.success ? 'sent' : 'error');
+                setTimeout(() => setPortalState('idle'), 3000);
+              }}
             >
-              View Client Portal
-            </a>
+              {portalState === 'sending' ? 'Sending…' : portalState === 'sent' ? 'Email Sent!' : portalState === 'error' ? 'Failed — Retry' : 'Send Portal Link'}
+            </button>
             <div style={{ flex: 1 }} />
             <button className="btn-danger" onClick={async () => {
               if (confirm('Delete this project? This cannot be undone.')) await deleteProject(p.id);

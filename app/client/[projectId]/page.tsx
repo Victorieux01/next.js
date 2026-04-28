@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { stripe } from '@/app/lib/stripe';
 import ClientProjectView from '@/app/ui/dashboard/client-project-view';
+import { verifyPortalToken } from '@/app/lib/portal-token';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,10 +12,12 @@ export default async function ClientPortalPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ session_id?: string; funded?: string }>;
+  searchParams: Promise<{ session_id?: string; funded?: string; token?: string }>;
 }) {
   const { projectId } = await params;
-  const { session_id, funded } = await searchParams;
+  const { session_id, funded, token } = await searchParams;
+
+  if (!token || !verifyPortalToken(projectId, token)) notFound();
 
   // Verify the Stripe Checkout session and mark Funded if payment succeeded
   if (session_id && funded === '1') {

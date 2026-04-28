@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS coredon_projects (
 -- Add approved_date if running migration on an existing table
 ALTER TABLE coredon_projects ADD COLUMN IF NOT EXISTS approved_date DATE;
 
+-- Add project_code for human-readable sequential IDs (e.g. CRD-0001)
+ALTER TABLE coredon_projects ADD COLUMN IF NOT EXISTS project_code TEXT;
+
 -- Project Revisions
 CREATE TABLE IF NOT EXISTS coredon_project_revisions (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),

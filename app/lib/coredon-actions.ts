@@ -2,7 +2,7 @@
 import supabase from './supabase';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail, sendApprovalEmail, sendRequestChangesEmail } from './sendgrid';
+import { sendDisputeRejectionEmail, sendContractEmail, sendPreviewEmail, sendApprovalEmail, sendRequestChangesEmail, sendPortalAccessEmail } from './sendgrid';
 import { auth } from '@/auth';
 
 const COLORS = ['#4285F4','#00C896','#9AA0A6','#F9AB00','#EA4335','#A142F4','#24C1E0','#FF7043'];
@@ -40,9 +40,16 @@ export async function createProject(formData: FormData) {
     ? description + (description ? '\n\n' : '') + contractNotes
     : description;
 
+  const { count: projectCount } = await supabase
+    .from('coredon_projects')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
+  const projectCode = `CRD-${String((projectCount ?? 0) + 1).padStart(4, '0')}`;
+
   const { data: inserted } = await supabase.from('coredon_projects').insert({
     user_id: userId,
     name, email, description: finalDescription, amount, status: 'Pending', initials, color,
+    project_code:   projectCode,
     start_date:     startDate    || null,
     end_date:       endDate      || null,
     expected_date:  expectedDate || null,
@@ -418,6 +425,24 @@ export async function sendMessageAsClient(
   } catch (err) {
     console.error('sendMessageAsClient error:', err);
     return { success: false, error: 'Failed to send message.' };
+  }
+}
+
+// ── Send Portal Link to Client ────────────────────────────────────────────────
+export async function sendClientPortalLink(
+  projectId: string,
+  clientEmail: string,
+  clientName: string,
+  projectName: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { name: providerName } = await getUserSession();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app';
+    await sendPortalAccessEmail({ clientEmail, clientName, providerName, projectName, projectId, appUrl });
+    return { success: true };
+  } catch (err) {
+    console.error('sendClientPortalLink error:', err);
+    return { success: false, error: 'Failed to send portal link email.' };
   }
 }
 

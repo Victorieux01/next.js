@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { generatePortalToken } from './portal-token';
 
 let _resend: Resend | null = null;
 function getResend(): Resend {
@@ -32,7 +33,7 @@ export async function sendContractEmail({
   projectId: string;
   appUrl: string;
 }) {
-  const portalUrl = `${appUrl}/client/${projectId}`;
+  const portalUrl = `${appUrl}/client/${projectId}?token=${generatePortalToken(projectId)}`;
   const fmtAmount = amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 
   await resend.emails.send({
@@ -274,6 +275,75 @@ export async function sendRequestChangesEmail({
                 <p style="margin:0;font-size:14px;color:#ccc;line-height:1.6;white-space:pre-wrap">${reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
               </div>
               <a href="${dashboardUrl}" style="display:block;background:#1a8cff;color:#fff;border-radius:10px;padding:16px;font-size:15px;font-weight:700;text-decoration:none;text-align:center;letter-spacing:0.02em">View Project →</a>
+            </td></tr>
+          </table>
+          <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
+
+export async function sendPortalAccessEmail({
+  clientEmail,
+  clientName,
+  providerName,
+  projectName,
+  projectId,
+  appUrl,
+}: {
+  clientEmail: string;
+  clientName: string;
+  providerName: string;
+  projectName: string;
+  projectId: string;
+  appUrl: string;
+}) {
+  const portalUrl = `${appUrl}/client/${projectId}?token=${generatePortalToken(projectId)}`;
+
+  await resend.emails.send({
+    from: 'Coredon <contracts@coredon.app>',
+    to: clientEmail,
+    subject: `Your Project Portal — ${projectName}`,
+    html: `<!DOCTYPE html>
+<html dir="ltr" lang="en">
+<head><meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/></head>
+<body style="background-color:#0a0a0a;margin:0;padding:0;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" align="center">
+    <tr><td style="padding:48px 20px">
+      <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;margin:0 auto">
+        <tr><td>
+          <p style="font-size:22px;font-weight:700;color:#fff;letter-spacing:0.18em;text-transform:uppercase;text-align:center;margin:0 0 32px">COREDON</p>
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#161616;border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden">
+            <tr><td style="padding:32px">
+              <p style="margin:0 0 6px;font-size:12px;color:#555;letter-spacing:0.08em;text-transform:uppercase">Project Portal Access</p>
+              <p style="margin:0 0 20px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.02em">${projectName}</p>
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px"/>
+              <p style="margin:0 0 20px;font-size:14px;color:#888;line-height:1.6">
+                Hi ${clientName},<br/><br/>
+                <strong style="color:#aaa">${providerName}</strong> has shared your project portal for <strong style="color:#aaa">${projectName}</strong>. Use the link below to access your portal at any time.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;background:#111;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px 20px">
+                <tr>
+                  <td>
+                    <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#555;letter-spacing:0.08em;text-transform:uppercase">Your portal lets you</p>
+                    <table cellpadding="0" cellspacing="0" role="presentation">
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;View contract details &amp; timeline</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Fund the escrow securely via Stripe</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Chat directly with your provider</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;View &amp; download uploaded files</td></tr>
+                      <tr><td style="padding:3px 0;font-size:13px;color:#999">✓&nbsp;&nbsp;Approve deliverables to release funds</td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <a href="${portalUrl}" style="display:block;background:#6366F1;color:#fff;border-radius:10px;padding:18px;font-size:16px;font-weight:800;text-decoration:none;text-align:center;letter-spacing:0.02em">Open My Project Portal →</a>
+              <p style="margin:14px 0 0;font-size:12px;color:#444;text-align:center;line-height:1.5">
+                This link is private to you and always shows the latest project status.
+              </p>
             </td></tr>
           </table>
           <p style="text-align:center;font-size:11px;color:#363636;margin-top:20px">Powered by <span style="color:#555;font-weight:600">Coredon</span></p>

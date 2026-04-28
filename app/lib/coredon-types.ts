@@ -34,6 +34,7 @@ export interface ProjectDispute {
 
 export interface Project {
   id: string;
+  project_code?: string;
   name: string;
   email: string;
   status: ProjectStatus;
