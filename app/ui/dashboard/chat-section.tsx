@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { ProjectMessage } from '@/app/lib/coredon-types';
 import { sendMessageAsProvider, sendMessageAsClient } from '@/app/lib/coredon-actions';
 
-const POLL_MS = 3000;
+const POLL_ACTIVE_MS  = 1000;   // while the tab is visible
+const POLL_HIDDEN_MS  = 10000;  // while the tab is backgrounded
 
 interface Props {
   projectId: string;
@@ -11,6 +12,7 @@ interface Props {
   side: 'provider' | 'client';
   senderName: string;
   token?: string;
+  onRefresh?: () => void;
 }
 
 export default function ChatSection({ projectId, messages: initialMessages, side, senderName, token }: Props) {
@@ -19,6 +21,7 @@ export default function ChatSection({ projectId, messages: initialMessages, side
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -29,21 +32,36 @@ export default function ChatSection({ projectId, messages: initialMessages, side
       if (!res.ok) return;
       const data = await res.json();
       setMessages(data.messages ?? []);
-    } catch {
-      // ignore silently
-    }
+    } catch { /* ignore */ }
   }, [projectId, token]);
 
-  // Poll for new messages
   useEffect(() => {
-    const id = setInterval(fetchMessages, POLL_MS);
-    return () => clearInterval(id);
+    let timerId: ReturnType<typeof setTimeout>;
+
+    function poll() {
+      fetchMessages().finally(() => {
+        const delay = document.visibilityState === 'hidden' ? POLL_HIDDEN_MS : POLL_ACTIVE_MS;
+        timerId = setTimeout(poll, delay);
+      });
+    }
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        clearTimeout(timerId);
+        poll(); // catch up immediately when the user returns to the tab
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisible);
+    timerId = setTimeout(poll, POLL_ACTIVE_MS);
+
+    return () => {
+      clearTimeout(timerId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [fetchMessages]);
 
-  // Sync when RSC re-renders (e.g. initial load)
-  useEffect(() => {
-    setMessages(initialMessages);
-  }, [initialMessages]);
+  useEffect(() => { setMessages(initialMessages); }, [initialMessages]);
 
   const sorted = [...messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -51,7 +69,7 @@ export default function ChatSection({ projectId, messages: initialMessages, side
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [sorted.length]);
 
   function formatTime(iso: string) {
     try {
@@ -66,14 +84,31 @@ export default function ChatSection({ projectId, messages: initialMessages, side
     const text = content.trim();
     if (!text) return;
     setError('');
+    setContent('');
+
+    // Optimistic: show the message instantly before the server confirms
+    const tempId = `tmp-${Date.now()}`;
+    const optimistic: ProjectMessage = {
+      id: tempId,
+      project_id: projectId,
+      sender: side,
+      sender_name: senderName,
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimistic]);
+
     startTransition(async () => {
       const res = side === 'provider'
         ? await sendMessageAsProvider(projectId, text)
         : await sendMessageAsClient(projectId, senderName, text);
       if (res.success) {
-        setContent('');
-        await fetchMessages();
+        await fetchMessages(); // replace optimistic with real DB row
+        inputRef.current?.focus();
       } else {
+        // Roll back the optimistic message and restore the input
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setContent(text);
         setError(res.error ?? 'Failed to send.');
       }
     });
@@ -81,80 +116,130 @@ export default function ChatSection({ projectId, messages: initialMessages, side
 
   return (
     <div className="card" style={{ padding: 0, marginBottom: 20, overflow: 'hidden' }}>
+
       {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
+        display: 'flex', alignItems: 'center', gap: 12,
         padding: '14px 20px',
         borderBottom: '1px solid var(--border-light)',
       }}>
         <div style={{
-          width: 30, height: 30, borderRadius: 8,
-          background: 'rgba(99,102,241,0.1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+          background: 'rgba(99,102,241,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 15, fontWeight: 800, color: '#6366F1',
         }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+          {side === 'provider' ? (senderName || 'P').slice(0, 1).toUpperCase() : 'C'}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Project Chat</div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Project Chat</div>
+          <div style={{ fontSize: 11, color: '#22C55E', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E', display: 'inline-block' }} />
+            Active
+          </div>
+        </div>
         <span style={{
           marginLeft: 'auto', fontSize: 11, fontWeight: 600,
-          color: 'var(--text-muted)',
-          background: 'var(--bg)', border: '1px solid var(--border-light)',
-          borderRadius: 20, padding: '2px 9px',
+          color: 'var(--text-muted)', background: 'var(--bg)',
+          border: '1px solid var(--border-light)', borderRadius: 20, padding: '2px 9px',
         }}>
           {sorted.length} message{sorted.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Messages */}
+      {/* Message list */}
       <div style={{
-        padding: sorted.length === 0 ? '24px 20px' : '16px 20px',
-        display: 'flex', flexDirection: 'column', gap: 12,
+        height: 380,
+        overflowY: 'auto',
+        padding: '16px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        background: 'var(--bg)',
       }}>
         {sorted.length === 0 && (
-          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+          <div style={{
+            margin: 'auto', textAlign: 'center',
+            fontSize: 13, color: 'var(--text-muted)',
+          }}>
             No messages yet — start the conversation.
           </div>
         )}
-        {sorted.map(msg => {
+
+        {sorted.map((msg, i) => {
           const isMe = msg.sender === side;
+          const initial = (msg.sender_name || '?').slice(0, 1).toUpperCase();
+          const prevMsg = sorted[i - 1];
+          const nextMsg = sorted[i + 1];
+          const isFirstInGroup = !prevMsg || prevMsg.sender !== msg.sender;
+          const isLastInGroup = !nextMsg || nextMsg.sender !== msg.sender;
+
           return (
             <div
               key={msg.id}
               style={{
                 display: 'flex',
-                flexDirection: isMe ? 'row-reverse' : 'row',
+                flexDirection: 'row',
+                justifyContent: isMe ? 'flex-end' : 'flex-start',
                 alignItems: 'flex-end',
                 gap: 8,
+                marginTop: isFirstInGroup && i > 0 ? 12 : 2,
               }}
             >
-              {/* Avatar */}
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                background: isMe ? '#6366F1' : 'var(--border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 800, color: isMe ? '#fff' : 'var(--text-secondary)',
-              }}>
-                {(msg.sender_name || '?').slice(0, 1).toUpperCase()}
-              </div>
-
-              {/* Bubble */}
-              <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 3 }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', paddingInline: 4 }}>
-                  {msg.sender_name} · {formatTime(msg.created_at)}
-                </div>
+              {/* Avatar for received messages — visible only on last bubble in group */}
+              {!isMe && (
                 <div style={{
-                  background: isMe ? '#6366F1' : 'var(--surface)',
-                  color: isMe ? '#fff' : 'var(--text-primary)',
-                  border: isMe ? 'none' : '1px solid var(--border-light)',
-                  borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border-light)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)',
+                  visibility: isLastInGroup ? 'visible' : 'hidden',
+                }}>
+                  {initial}
+                </div>
+              )}
+
+              {/* Bubble + meta */}
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: isMe ? 'flex-end' : 'flex-start',
+                gap: 2, maxWidth: '68%',
+              }}>
+                {/* Sender name — first bubble in group, received only */}
+                {isFirstInGroup && !isMe && (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', paddingLeft: 4 }}>
+                    {msg.sender_name}
+                  </div>
+                )}
+
+                {/* Bubble */}
+                <div style={{
                   padding: '10px 14px',
-                  fontSize: 13, lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  borderRadius: isMe
+                    ? (isFirstInGroup ? '18px 18px 4px 18px' : '18px 4px 4px 18px')
+                    : (isFirstInGroup ? '18px 18px 18px 4px' : '4px 18px 18px 4px'),
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  background: isMe ? 'var(--chat-sent)' : 'var(--surface)',
+                  color: isMe ? 'var(--chat-sent-text)' : 'var(--text-primary)',
+                  border: isMe ? 'none' : '1px solid var(--border-light)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                 }}>
                   {msg.content}
                 </div>
+
+                {/* Timestamp — last bubble in group only */}
+                {isLastInGroup && (
+                  <div style={{
+                    fontSize: 10, color: 'var(--text-muted)',
+                    paddingInline: 4,
+                  }}>
+                    {formatTime(msg.created_at)}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -165,39 +250,45 @@ export default function ChatSection({ projectId, messages: initialMessages, side
       {/* Input */}
       <div style={{
         borderTop: '1px solid var(--border-light)',
-        padding: '12px 16px',
-        display: 'flex', gap: 10, alignItems: 'flex-end',
+        padding: '12px 14px',
+        display: 'flex', gap: 10, alignItems: 'center',
+        background: 'var(--surface)',
       }}>
-        <textarea
+        <input
+          ref={inputRef}
           value={content}
           onChange={e => setContent(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-          }}
-          placeholder="Send a message… (Enter to send, Shift+Enter for new line)"
-          rows={2}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
+          placeholder="Type message here..."
           style={{
-            flex: 1, padding: '10px 14px', borderRadius: 10,
-            background: 'var(--bg)', border: '1px solid var(--border-light)',
-            color: 'var(--text-primary)', fontSize: 13,
-            resize: 'none', fontFamily: 'inherit', lineHeight: 1.5,
+            flex: 1, padding: '10px 16px', borderRadius: 24,
+            background: 'var(--bg)',
+            border: '1px solid var(--border-light)',
+            color: 'var(--text-primary)',
+            fontSize: 13, fontFamily: 'inherit',
+            outline: 'none',
           }}
         />
         <button
           onClick={handleSend}
           disabled={pending || !content.trim()}
           style={{
-            flexShrink: 0, padding: '10px 18px', borderRadius: 10,
+            width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
             background: pending || !content.trim() ? 'var(--border)' : '#6366F1',
-            color: pending || !content.trim() ? 'var(--text-muted)' : '#fff',
-            border: 'none', fontWeight: 700, fontSize: 13,
-            cursor: pending || !content.trim() ? 'default' : 'pointer',
-            fontFamily: 'inherit', transition: 'background 0.15s',
+            border: 'none', cursor: pending || !content.trim() ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.15s',
           }}
         >
-          {pending ? '…' : 'Send'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke={pending || !content.trim() ? 'var(--text-muted)' : '#fff'}
+            strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
         </button>
       </div>
+
       {error && (
         <div style={{ padding: '0 16px 10px', fontSize: 12, color: '#EF4444' }}>{error}</div>
       )}

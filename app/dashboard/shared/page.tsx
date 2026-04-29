@@ -8,7 +8,7 @@ export default async function SharedPage() {
   const session = await getSession();
   if (!session?.user?.id) redirect('/login');
   const email = session.user.email ?? '';
-  const raw = await fetchProjectsByEmail(email);
+  const raw = await fetchProjectsByEmail(email, session.user.id);
   const projects = raw.map(p => ({ ...p, token: generatePortalToken(p.id) }));
   return <SharedClient projects={projects} />;
 }

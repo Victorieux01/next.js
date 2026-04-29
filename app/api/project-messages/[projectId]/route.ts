@@ -19,13 +19,26 @@ export async function GET(
   } else {
     const session = await auth();
     if (session?.user?.id) {
-      const { data } = await supabase
+      // Allow if the user is the provider who owns the project
+      const { data: asProvider } = await supabase
         .from('coredon_projects')
         .select('id')
         .eq('id', projectId)
         .eq('user_id', session.user.id)
         .single();
-      authorized = !!data;
+
+      if (asProvider) {
+        authorized = true;
+      } else if (session.user.email) {
+        // Allow if the logged-in user is the client on this project
+        const { data: asClient } = await supabase
+          .from('coredon_projects')
+          .select('id')
+          .eq('id', projectId)
+          .eq('email', session.user.email)
+          .single();
+        authorized = !!asClient;
+      }
     }
   }
 

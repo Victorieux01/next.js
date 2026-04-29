@@ -11,10 +11,10 @@ function getInitials(name: string): string {
   return name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
 }
 
-async function getUserSession(): Promise<{ id: string; name: string }> {
+async function getUserSession(): Promise<{ id: string; name: string; email: string }> {
   const session = await auth();
   if (!session?.user?.id) redirect('/login');
-  return { id: session.user.id, name: session.user.name ?? 'Provider' };
+  return { id: session.user.id, name: session.user.name ?? 'Provider', email: session.user.email ?? '' };
 }
 
 async function getUserId(): Promise<string> {
@@ -23,7 +23,7 @@ async function getUserId(): Promise<string> {
 
 // ── PROJECTS ──
 export async function createProject(formData: FormData) {
-  const { id: userId, name: editorName } = await getUserSession();
+  const { id: userId, name: editorName, email: userEmail } = await getUserSession();
   const name           = formData.get('name') as string;
   const email          = formData.get('email') as string;
   const description    = formData.get('description') as string;
@@ -56,36 +56,37 @@ export async function createProject(formData: FormData) {
     prepaid_method: paymentMethod,
   }).select('id').single();
 
-  // Add client to clients tab if not already present (match by email)
-  const { data: existingClient } = await supabase
-    .from('coredon_clients')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('email', email)
-    .single();
-
-  if (!existingClient) {
-    await supabase.from('coredon_clients').insert({
-      user_id:     userId,
-      name,
-      email,
-      company:     name,
-      outstanding: amount,
-      note:        'Added automatically from project',
-    });
-    revalidatePath('/dashboard/clients');
-  } else {
-    // Bump outstanding by this project's amount
-    const { data: cl } = await supabase
+  // Add client to clients tab only if the client email differs from the provider's own email
+  if (email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+    const { data: existingClient } = await supabase
       .from('coredon_clients')
-      .select('outstanding')
-      .eq('id', existingClient.id)
+      .select('id')
+      .eq('user_id', userId)
+      .eq('email', email)
       .single();
-    await supabase
-      .from('coredon_clients')
-      .update({ outstanding: (cl?.outstanding ?? 0) + amount })
-      .eq('id', existingClient.id);
-    revalidatePath('/dashboard/clients');
+
+    if (!existingClient) {
+      await supabase.from('coredon_clients').insert({
+        user_id:     userId,
+        name,
+        email,
+        company:     name,
+        outstanding: amount,
+        note:        'Added automatically from project',
+      });
+      revalidatePath('/dashboard/clients');
+    } else {
+      const { data: cl } = await supabase
+        .from('coredon_clients')
+        .select('outstanding')
+        .eq('id', existingClient.id)
+        .single();
+      await supabase
+        .from('coredon_clients')
+        .update({ outstanding: (cl?.outstanding ?? 0) + amount })
+        .eq('id', existingClient.id);
+      revalidatePath('/dashboard/clients');
+    }
   }
 
   // Send contract email to the client
@@ -104,6 +105,7 @@ export async function createProject(formData: FormData) {
     }).catch(err => console.error('Contract email error:', err));
   }
 
+  revalidatePath('/dashboard');
   revalidatePath('/dashboard/projects');
   redirect('/dashboard/projects');
 }
@@ -191,7 +193,7 @@ export async function toggleProjectPin(id: string, pinned: boolean) {
 
 // ── CLIENTS ──
 export async function createClient(formData: FormData) {
-  const userId      = await getUserId();
+  const { id: userId, email: userEmail } = await getUserSession();
   const company     = formData.get('company') as string;
   const name        = formData.get('name') as string;
   const email       = formData.get('email') as string;
@@ -199,6 +201,8 @@ export async function createClient(formData: FormData) {
   const address     = formData.get('address') as string;
   const note        = formData.get('note') as string;
   const outstanding = parseFloat(formData.get('outstanding') as string) || 0;
+
+  if (email.trim().toLowerCase() === userEmail.trim().toLowerCase()) return;
 
   await supabase.from('coredon_clients').insert({
     user_id: userId,

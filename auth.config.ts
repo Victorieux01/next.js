@@ -44,7 +44,8 @@ export const authConfig = {
 
     jwt({ token, user, trigger, session }) {
       if (user) {
-        token.id = user.id;
+        token.id    = user.id;
+        token.email = user.email;
         token.twoFactorPending = user.twoFactorPending ?? false;
       }
       if (trigger === 'update' && session !== null && session !== undefined) {
@@ -58,7 +59,8 @@ export const authConfig = {
     session({ session, token }) {
       (session as any).twoFactorPending = token.twoFactorPending ?? false;
       if (session.user) {
-        (session.user as any).id = token.id as string;
+        (session.user as any).id    = token.id    as string;
+        session.user.email          = (token.email as string) ?? session.user.email;
         (session.user as any).twoFactorPending = token.twoFactorPending ?? false;
       }
       return session;

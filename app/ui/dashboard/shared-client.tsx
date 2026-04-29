@@ -66,10 +66,11 @@ export default function SharedClient({ projects }: Props) {
         </div>
 
         {pageItems.map((p, i) => (
-          <div
+          <Link
             key={p.id}
+            href={`/dashboard/shared/${p.id}?token=${p.token}`}
             className="tbl-row"
-            style={{ borderTop: i === 0 ? 'none' : undefined }}
+            style={{ borderTop: i === 0 ? 'none' : undefined, textDecoration: 'none', color: 'inherit', display: 'flex', cursor: 'pointer' }}
           >
             <div style={{ flex: 2, display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, background: p.color + '22', color: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
@@ -82,15 +83,10 @@ export default function SharedClient({ projects }: Props) {
             </div>
             <div style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: 14 }}>{fmt(p.amount)}</div>
             <div style={{ flex: 1, textAlign: 'right' }}><Badge status={p.status} /></div>
-            <div style={{ flex: 1, textAlign: 'right' }}>
-              <Link
-                href={`/client/${p.id}?token=${p.token}`}
-                style={{ fontSize: 12, color: '#0984E3', fontWeight: 600, textDecoration: 'none' }}
-              >
-                View →
-              </Link>
+            <div style={{ flex: 1, textAlign: 'right', fontSize: 12, color: '#0984E3', fontWeight: 600 }}>
+              View →
             </div>
-          </div>
+          </Link>
         ))}
 
         {pageItems.length === 0 && (

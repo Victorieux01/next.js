@@ -181,23 +181,40 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
   }
 }
 
-export async function fetchProjectsByEmail(email: string): Promise<{
+export async function fetchProjectsByEmail(
+  email: string,
+  excludeUserId?: string,
+): Promise<{
   id: string; name: string; status: string; amount: number;
   start_date: string; expected_date: string; color: string; initials: string;
   user_id: string; provider_name: string;
 }[]> {
-  if (!email) return [];
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return [];
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('coredon_projects')
-      .select('id, name, status, amount, start_date, expected_date, color, initials, user_id')
-      .eq('email', email)
+      .select('id, name, status, amount, start_date, expected_date, color, initials, user_id, email')
+      .ilike('email', normalizedEmail)
       .order('created_at', { ascending: false });
+
+    if (excludeUserId) {
+      query = query.neq('user_id', excludeUserId);
+    }
+
+    const { data, error } = await query;
 
     if (error || !data) return [];
 
+    // JS-level guard: strict email match + exclude own projects
+    const rows = (data as any[]).filter((p) =>
+      typeof p.email === 'string' &&
+      p.email.trim().toLowerCase() === normalizedEmail &&
+      (!excludeUserId || p.user_id !== excludeUserId),
+    );
+
     // Fetch provider names for each unique user_id
-    const userIds = [...new Set(data.map((p: any) => p.user_id as string))];
+    const userIds = [...new Set(rows.map((p: any) => p.user_id as string))];
     const providerMap: Record<string, string> = {};
     await Promise.all(userIds.map(async (uid) => {
       try {
@@ -210,7 +227,7 @@ export async function fetchProjectsByEmail(email: string): Promise<{
       } catch { /* ignore */ }
     }));
 
-    return data.map((p: any) => ({
+    return rows.map((p: any) => ({
       id: p.id,
       name: p.name,
       status: p.status,

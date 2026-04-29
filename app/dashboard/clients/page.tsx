@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 export default async function ClientsPage() {
   const session = await getSession();
   if (!session?.user?.id) redirect('/login');
-  const clients = await fetchAllClients(session.user.id);
+  const userEmail = session.user.email?.toLowerCase() ?? '';
+  const allClients = await fetchAllClients(session.user.id);
+  const clients = allClients.filter(c => (c.email?.toLowerCase() ?? '') !== userEmail);
   return <ClientsClient clients={clients} />;
 }
