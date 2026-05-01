@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 function fmt(n: number): string {
@@ -35,6 +35,10 @@ interface Props { projects: SharedProject[] }
 export default function SharedClient({ projects }: Props) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    localStorage.setItem('sharedSeenIds', JSON.stringify(projects.map(p => p.id)));
+  }, [projects.length]);
   const PER_PAGE = 10;
 
   const filtered = projects.filter(p =>

@@ -43,7 +43,11 @@
       "Bash(jobs -l)",
       "Bash(xargs sed *)",
       "Bash(node -e \"const t = require\\('next/cache'\\); console.log\\(Object.keys\\(t\\)\\)\")",
-      "Bash(node -e \"const t = require\\('next/cache'\\); console.log\\(t.revalidateTag.length\\)\")"
+      "Bash(node -e \"const t = require\\('next/cache'\\); console.log\\(t.revalidateTag.length\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({ path: '.env.local' }\\); const url = process.env.SUPABASE_URL; console.log\\('SUPABASE_URL defined:', !!url\\); if \\(url\\) { try { new URL\\(url\\); console.log\\('URL valid:', url.startsWith\\('http'\\) ? 'yes \\(starts with http\\)' : 'suspicious'\\); } catch { console.log\\('URL INVALID'\\); } }\")",
+      "Bash(node -e \"const fs = require\\('fs'\\); const content = fs.readFileSync\\('.env.local', 'utf8'\\); const match = content.match\\(/^SUPABASE_URL=\\(.*\\)$/m\\); if \\(match\\) { const url = match[1].trim\\(\\); try { const u = new URL\\(url\\); console.log\\('Protocol:', u.protocol\\); console.log\\('Host ends with supabase.co:', u.hostname.endsWith\\('supabase.co'\\)\\); } catch { console.log\\('INVALID URL'\\); } } else { console.log\\('NOT FOUND'\\); }\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('@supabase/supabase-js:', pkg.dependencies['@supabase/supabase-js']\\); console.log\\('Node version:', process.version\\);\")"
     ]
   }
 }

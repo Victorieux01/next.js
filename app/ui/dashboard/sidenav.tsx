@@ -2,9 +2,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SettingsModal, type UserProfile } from '@/app/ui/dashboard/settings-client';
-import { getUserProfile } from '@/app/lib/coredon-actions';
+import { getUserProfile, getSharedProjectIds } from '@/app/lib/coredon-actions';
 
 const navItems = [
   {
@@ -80,8 +80,35 @@ export default function SideNav({ user }: { user: { name: string; email: string 
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsUser, setSettingsUser] = useState<UserProfile | null>(null);
-  // Local name tracks the sidebar display and updates immediately on save
   const [localName, setLocalName] = useState(user.name);
+  const [sharedBadge, setSharedBadge] = useState(0);
+
+  useEffect(() => {
+    async function checkShared() {
+      try {
+        const ids = await getSharedProjectIds();
+        const raw = localStorage.getItem('sharedSeenIds');
+        if (raw === null) {
+          // First time: mark all current projects as seen so we don't badge old ones
+          localStorage.setItem('sharedSeenIds', JSON.stringify(ids));
+          setSharedBadge(0);
+        } else {
+          const seen = new Set<string>(JSON.parse(raw));
+          setSharedBadge(ids.filter(id => !seen.has(id)).length);
+        }
+      } catch {}
+    }
+    checkShared();
+    const interval = setInterval(checkShared, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Clear badge immediately when user navigates to shared
+  useEffect(() => {
+    if (pathname.startsWith('/dashboard/shared')) {
+      setSharedBadge(0);
+    }
+  }, [pathname]);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -129,6 +156,24 @@ export default function SideNav({ user }: { user: { name: string; email: string 
           >
             {item.icon}
             <span className="nb-label">{item.label}</span>
+            {item.page === 'shared' && sharedBadge > 0 && (
+              <span style={{
+                marginLeft: 'auto',
+                minWidth: 18, height: 18,
+                borderRadius: 9,
+                background: '#EF4444',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 5px',
+                lineHeight: 1,
+              }}>
+                {sharedBadge}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

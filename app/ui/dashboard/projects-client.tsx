@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Project } from '@/app/lib/coredon-types';
 
@@ -37,9 +37,29 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
+  const [pending, setPending] = useState<Project | null>(null);
   const PER_PAGE = 8;
 
-  const sorted = [...initialProjects].sort((a, b) => {
+  useEffect(() => {
+    const raw = sessionStorage.getItem('pendingProject');
+    if (!raw) return;
+    try {
+      setPending(JSON.parse(raw) as Project);
+      sessionStorage.removeItem('pendingProject');
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (pending && initialProjects.some(p => p.id === pending.id)) {
+      setPending(null);
+    }
+  }, [initialProjects, pending]);
+
+  const projects = pending
+    ? [pending, ...initialProjects.filter(p => p.id !== pending.id)]
+    : initialProjects;
+
+  const sorted = [...projects].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
     const oa = SORT_ORDER[a.status] ?? 99, ob = SORT_ORDER[b.status] ?? 99;
@@ -54,9 +74,9 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const pageItems = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const total = initialProjects.length;
-  const active = initialProjects.filter(p => p.status === 'Funded' || p.status === 'Pending').length;
-  const disputes = initialProjects.filter(p => p.status === 'Dispute').length;
+  const total = projects.length;
+  const active = projects.filter(p => p.status === 'Funded' || p.status === 'Pending').length;
+  const disputes = projects.filter(p => p.status === 'Dispute').length;
 
   return (
     <div className="page fade-in">

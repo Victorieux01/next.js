@@ -203,19 +203,19 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
 
   return (
     <div style={{
-      background: '#fff', borderRadius: 16, padding: '32px 28px',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-      fontSize: 11, color: '#1a1a2e', lineHeight: 1.6,
+      background: 'var(--surface)', borderRadius: 16, padding: '32px 28px',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+      fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.6,
       minHeight: 560,
     }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid var(--border-light)' }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: '#111' }}>Contract</div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Project Agreement</div>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-primary)' }}>Contract</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Project Agreement</div>
         </div>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
             <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
@@ -227,51 +227,51 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
       {/* From / To / Details */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>From</div>
-          <div style={{ fontWeight: 700, color: '#111', fontSize: 12 }}>Coredon</div>
-          <div style={{ color: '#6b7280' }}>coredon.app</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>From</div>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 12 }}>Coredon</div>
+          <div style={{ color: 'var(--text-secondary)' }}>coredon.app</div>
         </div>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>To</div>
-          <div style={{ fontWeight: 700, color: s1.name ? '#111' : '#d1d5db', fontSize: 12 }}>{s1.name || 'Client Name'}</div>
-          <div style={{ color: s1.email ? '#6b7280' : '#d1d5db' }}>{s1.email || 'client@example.com'}</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>To</div>
+          <div style={{ fontWeight: 700, color: s1.name ? 'var(--text-primary)' : 'var(--border)', fontSize: 12 }}>{s1.name || 'Client Name'}</div>
+          <div style={{ color: s1.email ? 'var(--text-secondary)' : 'var(--border)' }}>{s1.email || 'client@example.com'}</div>
         </div>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Details</div>
-          <div style={{ color: '#6b7280' }}>Date <span style={{ color: '#111', fontWeight: 600 }}>{today}</span></div>
-          <div style={{ color: '#6b7280' }}>Ref <span style={{ color: '#111', fontWeight: 600 }}>#{Math.floor(Math.random() * 90000 + 10000)}</span></div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Details</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Date <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{today}</span></div>
+          <div style={{ color: 'var(--text-secondary)' }}>Ref <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>#{Math.floor(Math.random() * 90000 + 10000)}</span></div>
         </div>
       </div>
 
       {/* Total */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24, paddingTop: 16, borderTop: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
             <span>Subtotal</span><span>{amount ? fmt(amount) : '—'}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
             <span>Tax</span><span>—</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 13, color: '#111', paddingTop: 6, borderTop: '1px solid #e5e7eb', marginTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 13, color: 'var(--text-primary)', paddingTop: 6, borderTop: '1px solid var(--border-light)', marginTop: 4 }}>
             <span>Total</span><span>{amount ? fmt(amount) : '—'}</span>
           </div>
         </div>
       </div>
 
       {/* Terms */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, paddingTop: 16, borderTop: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Terms</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Terms</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ color: '#6b7280' }}>Start date <span style={{ color: s1.start_date ? '#111' : '#d1d5db', fontWeight: 600 }}>{s1.start_date || '—'}</span></div>
-            <div style={{ color: '#6b7280' }}>Deadline <span style={{ color: s1.end_date ? '#111' : '#d1d5db', fontWeight: 600 }}>{s1.end_date || '—'}</span></div>
-            <div style={{ color: '#6b7280' }}>Delivery <span style={{ color: s1.expected_date ? '#111' : '#d1d5db', fontWeight: 600 }}>{s1.expected_date || '—'}</span></div>
-            <div style={{ color: '#6b7280' }}>Pay via <span style={{ color: '#111', fontWeight: 600 }}>{s2.payment_method}</span></div>
+            <div style={{ color: 'var(--text-secondary)' }}>Start date <span style={{ color: s1.start_date ? 'var(--text-primary)' : 'var(--border)', fontWeight: 600 }}>{s1.start_date || '—'}</span></div>
+            <div style={{ color: 'var(--text-secondary)' }}>Deadline <span style={{ color: s1.end_date ? 'var(--text-primary)' : 'var(--border)', fontWeight: 600 }}>{s1.end_date || '—'}</span></div>
+            <div style={{ color: 'var(--text-secondary)' }}>Delivery <span style={{ color: s1.expected_date ? 'var(--text-primary)' : 'var(--border)', fontWeight: 600 }}>{s1.expected_date || '—'}</span></div>
+            <div style={{ color: 'var(--text-secondary)' }}>Pay via <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{s2.payment_method}</span></div>
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Notes</div>
-          <div style={{ color: s2.contract_notes ? '#374151' : '#d1d5db', fontSize: 11, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Notes</div>
+          <div style={{ color: s2.contract_notes ? 'var(--text-secondary)' : 'var(--border)', fontSize: 11, lineHeight: 1.6 }}>
             {s2.contract_notes || 'Additional terms will appear here…'}
           </div>
         </div>
@@ -392,6 +392,7 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
   const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState<1 | 2>(1);
   const [errors, setErrors] = useState<Partial<Record<keyof Step1, string>>>({});
+  const [submitError, setSubmitError] = useState('');
 
   const [s1, setS1] = useState<Step1>({ name: '', email: '', description: '', start_date: '', end_date: '', expected_date: '', amount: '' });
   const [s2, setS2] = useState<Step2>({ payment_method: 'Stripe Connect', contract_notes: '' });
@@ -416,12 +417,43 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
   }
 
   function handleSubmit() {
+    setSubmitError('');
     startTransition(async () => {
       const fd = new FormData();
       Object.entries(s1).forEach(([k, v]) => fd.append(k, v));
       fd.append('payment_method', s2.payment_method);
       fd.append('contract_notes', s2.contract_notes);
-      await createProject(fd);
+      const result = await createProject(fd);
+      if (!result?.id) {
+        setSubmitError('Failed to create project. Please try again.');
+        return;
+      }
+      const finalDescription = s2.contract_notes
+        ? s1.description + (s1.description ? '\n\n' : '') + s2.contract_notes
+        : s1.description;
+      sessionStorage.setItem('pendingProject', JSON.stringify({
+        id:           result.id,
+        project_code: result.project_code,
+        name:         s1.name,
+        email:        s1.email,
+        description:  finalDescription,
+        amount:       parseFloat(s1.amount) || 0,
+        status:       'Pending',
+        initials:     result.initials,
+        color:        result.color,
+        start_date:   s1.start_date,
+        end_date:     s1.end_date,
+        expected_date: s1.expected_date,
+        pinned:       false,
+        created_at:   new Date().toISOString().slice(0, 10),
+        user_id:      '',
+        revisions:    [],
+        versions:     [],
+        files:        [],
+        disputes:     [],
+        messages:     [],
+      }));
+      window.location.href = '/dashboard/projects';
     });
   }
 
@@ -516,6 +548,9 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
                 onChange={e => setS2(p => ({ ...p, contract_notes: e.target.value }))} />
             </Field>
 
+            {submitError && (
+              <div className="error-banner">{submitError}</div>
+            )}
             <div style={{ display: 'flex', gap: 10, paddingTop: 6 }}>
               <button onClick={handleSubmit} disabled={isPending}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#4285F4', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>

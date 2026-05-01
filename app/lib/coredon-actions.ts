@@ -46,7 +46,7 @@ export async function createProject(formData: FormData) {
     .eq('user_id', userId);
   const projectCode = `CRD-${String((projectCount ?? 0) + 1).padStart(4, '0')}`;
 
-  const { data: inserted } = await supabase.from('coredon_projects').insert({
+  const { data: inserted, error: insertError } = await supabase.from('coredon_projects').insert({
     user_id: userId,
     name, email, description: finalDescription, amount, status: 'Pending', initials, color,
     project_code:   projectCode,
@@ -55,6 +55,11 @@ export async function createProject(formData: FormData) {
     expected_date:  expectedDate || null,
     prepaid_method: paymentMethod,
   }).select('id').single();
+
+  if (insertError) {
+    console.error('createProject insert error:', insertError.message);
+    return null;
+  }
 
   // Add client to clients tab only if the client email differs from the provider's own email
   if (email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
@@ -107,7 +112,11 @@ export async function createProject(formData: FormData) {
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/projects');
-  redirect('/dashboard/projects');
+  revalidatePath('/dashboard/shared');
+
+  return inserted?.id
+    ? { id: inserted.id as string, color, initials, project_code: projectCode, description: finalDescription }
+    : null;
 }
 
 export async function updateProjectStatus(id: string, status: string) {
@@ -466,5 +475,22 @@ export async function sendPreviewNotification(
   } catch (err) {
     console.error('sendPreviewNotification error:', err);
     return { success: false, error: 'Failed to send preview email.' };
+  }
+}
+
+export async function getSharedProjectIds(): Promise<string[]> {
+  const session = await auth();
+  if (!session?.user?.email || !session?.user?.id) return [];
+  const email = session.user.email.trim().toLowerCase();
+  const userId = (session.user as any).id as string;
+  try {
+    const { data } = await supabase
+      .from('coredon_projects')
+      .select('id')
+      .ilike('email', email)
+      .neq('user_id', userId);
+    return (data ?? []).map((p: any) => p.id as string);
+  } catch {
+    return [];
   }
 }
