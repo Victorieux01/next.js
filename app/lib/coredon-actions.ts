@@ -24,36 +24,42 @@ async function getUserId(): Promise<string> {
 // ── PROJECTS ──
 export async function createProject(formData: FormData) {
   const { id: userId, name: editorName, email: userEmail } = await getUserSession();
-  const name           = formData.get('name') as string;
-  const email          = formData.get('email') as string;
-  const description    = formData.get('description') as string;
-  const amount         = parseFloat(formData.get('amount') as string);
-  const startDate      = formData.get('start_date') as string;
-  const endDate        = formData.get('end_date') as string;
-  const expectedDate   = formData.get('expected_date') as string;
-  const paymentMethod  = (formData.get('payment_method') as string) || null;
-  const contractNotes  = (formData.get('contract_notes') as string) || null;
 
-  const initials = getInitials(name);
-  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-  const finalDescription = contractNotes
-    ? description + (description ? '\n\n' : '') + contractNotes
-    : description;
+  const title         = formData.get('title')         as string;
+  const clientName    = formData.get('clientName')    as string;
+  const email         = formData.get('email')         as string;
+  const deliverables  = formData.get('deliverables')  as string;
+  const deliveryDate  = formData.get('deliveryDate')  as string;
+  const hourlyRate    = parseFloat(formData.get('hourlyRate')    as string) || 0;
+  const hours         = parseFloat(formData.get('hours')         as string) || 0;
+  const technicalCost = parseFloat(formData.get('technicalCost') as string) || 0;
+  const artisticCost  = parseFloat(formData.get('artisticCost')  as string) || 0;
+  const revisions     = parseInt(formData.get('revisions')       as string) || 0;
+  const internalNote  = (formData.get('internalNote') as string) || '';
 
-  const { count: projectCount } = await supabase
-    .from('coredon_projects')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId);
-  const projectCode = `CRD-${String((projectCount ?? 0) + 1).padStart(4, '0')}`;
+  const amount   = hourlyRate * hours + technicalCost + artisticCost;
+  const initials = getInitials(clientName);
+  const color    = COLORS[Math.floor(Math.random() * COLORS.length)];
+  const today    = new Date().toISOString().slice(0, 10);
+
+  const meta = JSON.stringify({ t: title, cn: clientName, r: hourlyRate, h: hours, tc: technicalCost, ac: artisticCost, rv: revisions });
+  const description = internalNote
+    ? `${deliverables}\n\n[meta]::${meta}\n[internal]::${internalNote}`
+    : `${deliverables}\n\n[meta]::${meta}`;
 
   const { data: inserted, error: insertError } = await supabase.from('coredon_projects').insert({
-    user_id: userId,
-    name, email, description: finalDescription, amount, status: 'Pending', initials, color,
-    project_code:   projectCode,
-    start_date:     startDate    || null,
-    end_date:       endDate      || null,
-    expected_date:  expectedDate || null,
-    prepaid_method: paymentMethod,
+    user_id:       userId,
+    name:          title,
+    email,
+    description,
+    amount,
+    status:        'Pending',
+    initials,
+    color,
+    start_date:    today,
+    end_date:      deliveryDate || null,
+    expected_date: deliveryDate || null,
+    prepaid_method: null,
   }).select('id').single();
 
   if (insertError) {
@@ -73,9 +79,9 @@ export async function createProject(formData: FormData) {
     if (!existingClient) {
       await supabase.from('coredon_clients').insert({
         user_id:     userId,
-        name,
+        name:        clientName,
         email,
-        company:     name,
+        company:     clientName,
         outstanding: amount,
         note:        'Added automatically from project',
       });
@@ -94,17 +100,17 @@ export async function createProject(formData: FormData) {
     }
   }
 
-  // Send contract email to the client
+  // Send contract email to the client (deliverables only — no internal metadata)
   if (inserted?.id && email) {
     sendContractEmail({
       clientEmail:  email,
-      clientName:   name,
+      clientName,
       editorName,
-      projectName:  name,
-      description:  finalDescription,
+      projectName:  title,
+      description:  deliverables,
       amount,
-      startDate:    startDate  || '',
-      deadline:     endDate    || '',
+      startDate:    today,
+      deadline:     deliveryDate || '',
       projectId:    inserted.id,
       appUrl:       process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
     }).catch(err => console.error('Contract email error:', err));
@@ -115,7 +121,7 @@ export async function createProject(formData: FormData) {
   revalidatePath('/dashboard/shared');
 
   return inserted?.id
-    ? { id: inserted.id as string, color, initials, project_code: projectCode, description: finalDescription }
+    ? { id: inserted.id as string, color, initials, project_code: undefined, description }
     : null;
 }
 
@@ -305,9 +311,8 @@ export async function approveProject(projectId: string): Promise<{ success: bool
     if (project.status !== 'Funded') return { success: false, error: 'Project is not in a fundable state.' };
 
     await supabase.from('coredon_projects').update({
-      status:        'Released',
-      released_date: date,
-      approved_date: date,
+      status:          'Released',
+      released_date:   date,
       completion_date: date,
     }).eq('id', projectId);
 

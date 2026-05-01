@@ -9,6 +9,10 @@ function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 }
 
+function getDeliverables(description: string): string {
+  return (description || '').split('\n\n[meta]::')[0].trim();
+}
+
 function Badge({ status }: { status: string }) {
   const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444' };
   return (
@@ -183,7 +187,7 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
   </div>
 
   <div class="section-title">Scope of Work &amp; Contract Notes</div>
-  <div class="desc-box">${(p.description || '—').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+  <div class="desc-box">${(getDeliverables(p.description) || '—').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
 
   <div class="section-title">Terms</div>
   <p style="font-size:13px;color:#475569;margin-bottom:32px;line-height:1.8;">
@@ -291,7 +295,7 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
             </div>
             <div>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 2 }}>{p.description}</div>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 2 }}>{getDeliverables(p.description)}</div>
             </div>
           </div>
 
