@@ -6,11 +6,21 @@ export default async function PreviewPage({ params }: { params: Promise<{ projec
 
   const { data: project } = await supabase
     .from('coredon_projects')
-    .select('id, name, email, description, amount, end_date, status')
+    .select('id, name, email, description, amount, end_date, status, user_id')
     .eq('id', projectId)
     .single();
 
   if (!project) notFound();
+
+  // Fetch provider name for watermark
+  const { data: providerSettings } = await supabase
+    .from('coredon_user_settings')
+    .select('first_name, last_name')
+    .eq('user_id', project.user_id)
+    .single();
+  const providerName = providerSettings
+    ? `${providerSettings.first_name ?? ''} ${providerSettings.last_name ?? ''}`.trim()
+    : '';
 
   const { data: files } = await supabase
     .from('coredon_project_files')
@@ -38,6 +48,10 @@ export default async function PreviewPage({ params }: { params: Promise<{ projec
   const fmtAmount = (n: number) =>
     n.toLocaleString('fr-CA', { minimumFractionDigits: 2 }) + ' $';
 
+  const watermarkText = providerName
+    ? `Work by ${providerName} — Secured by Coredon`
+    : 'Secured by Coredon';
+
   return (
     <html lang="en">
       <head>
@@ -49,19 +63,24 @@ export default async function PreviewPage({ params }: { params: Promise<{ projec
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                  background: #f8fafc; color: #0f172a; }
           .watermark-wrap { position: relative; display: inline-block; width: 100%; }
-          .watermark-wrap::after {
-            content: 'DRAFT — NOT FOR DISTRIBUTION';
-            position: absolute; inset: 0;
+          .watermark-wrap::before {
+            content: attr(data-watermark);
+            position: absolute; inset: 0; z-index: 2;
             display: flex; align-items: center; justify-content: center;
-            font-size: clamp(14px, 3vw, 28px); font-weight: 900;
-            color: rgba(255,255,255,0.55); letter-spacing: 0.12em;
+            font-size: clamp(11px, 2.5vw, 22px); font-weight: 900;
+            color: rgba(255,255,255,0.5); letter-spacing: 0.14em;
             text-transform: uppercase; pointer-events: none;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+          }
+          .watermark-wrap::after {
+            content: '';
+            position: absolute; inset: 0; z-index: 1;
+            pointer-events: none;
             background: repeating-linear-gradient(
               -45deg,
-              transparent, transparent 60px,
-              rgba(0,0,0,0.06) 60px, rgba(0,0,0,0.06) 61px
+              transparent, transparent 55px,
+              rgba(255,255,255,0.07) 55px, rgba(255,255,255,0.07) 56px
             );
-            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
           }
           .watermark-wrap img, .watermark-wrap video {
             display: block; width: 100%; border-radius: 10px;
@@ -121,14 +140,14 @@ export default async function PreviewPage({ params }: { params: Promise<{ projec
                     </div>
 
                     {isImage && (
-                      <div className="watermark-wrap" style={{ background: '#0f172a' }}>
+                      <div className="watermark-wrap" data-watermark={watermarkText} style={{ background: '#0f172a' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={url} alt={f.name} />
                       </div>
                     )}
 
                     {isVideo && (
-                      <div className="watermark-wrap" style={{ background: '#0f172a' }}>
+                      <div className="watermark-wrap" data-watermark={watermarkText} style={{ background: '#0f172a' }}>
                         <video controls preload="metadata" controlsList="nodownload">
                           <source src={url} type={ext === '.mp4' ? 'video/mp4' : ext === '.mov' ? 'video/quicktime' : 'video/webm'} />
                         </video>

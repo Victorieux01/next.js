@@ -47,7 +47,17 @@
       "Bash(node -e \"require\\('dotenv'\\).config\\({ path: '.env.local' }\\); const url = process.env.SUPABASE_URL; console.log\\('SUPABASE_URL defined:', !!url\\); if \\(url\\) { try { new URL\\(url\\); console.log\\('URL valid:', url.startsWith\\('http'\\) ? 'yes \\(starts with http\\)' : 'suspicious'\\); } catch { console.log\\('URL INVALID'\\); } }\")",
       "Bash(node -e \"const fs = require\\('fs'\\); const content = fs.readFileSync\\('.env.local', 'utf8'\\); const match = content.match\\(/^SUPABASE_URL=\\(.*\\)$/m\\); if \\(match\\) { const url = match[1].trim\\(\\); try { const u = new URL\\(url\\); console.log\\('Protocol:', u.protocol\\); console.log\\('Host ends with supabase.co:', u.hostname.endsWith\\('supabase.co'\\)\\); } catch { console.log\\('INVALID URL'\\); } } else { console.log\\('NOT FOUND'\\); }\")",
       "Bash(node -e ' *)",
-      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('@supabase/supabase-js:', pkg.dependencies['@supabase/supabase-js']\\); console.log\\('Node version:', process.version\\);\")"
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('@supabase/supabase-js:', pkg.dependencies['@supabase/supabase-js']\\); console.log\\('Node version:', process.version\\);\")",
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('postgres:', pkg.dependencies['postgres']\\); console.log\\('pg:', pkg.dependencies['pg']\\);\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\victo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Victor-Projets-nextjs-dashboard-github\\\\b3d04560-845d-41a2-aa40-7ad55a391568\\\\tasks\\\\be701bqys.output\" -Wait -Tail 100)",
+      "Bash(Select-Object -First 200)",
+      "Bash(python -c \"import pypdf; print\\('pypdf ok'\\)\")",
+      "Bash(python -c \"import pdfplumber; print\\('pdfplumber ok'\\)\")",
+      "Bash(python -c \"import fitz; print\\('fitz ok'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python *)",
+      "Bash(findstr \"packageManager\")",
+      "Bash(npm cache *)"
     ]
   }
 }

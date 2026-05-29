@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Project } from '@/app/lib/coredon-types';
 import { updateUserProfile } from '@/app/lib/coredon-actions';
@@ -13,25 +13,89 @@ function fmt(n: number): string {
   }).replace(/,/g, '\u202F') + '\u00a0$';
 }
 
+type MonthBucket = { total: number; oneTime: number; installment: number };
+
 function computeMonthlyEarnings(projects: Project[]) {
   const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const released = projects.filter(p => p.status === 'Released');
-  const byMonth: Record<string, number> = {};
+  const byMonth: Record<string, MonthBucket> = {};
+
+  const ensure = (key: string) => {
+    if (!byMonth[key]) byMonth[key] = { total: 0, oneTime: 0, installment: 0 };
+  };
+
   released.forEach(p => {
-    const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
-    const d = new Date(dateStr);
-    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    byMonth[key] = (byMonth[key] || 0) + p.amount;
+    const isInstallment = p.payment_type === 'installments' && (p.installment_months ?? 1) > 1;
+    if (isInstallment) {
+      const months = p.installment_months!;
+      const monthly = p.amount / months;
+      const anchor = new Date(p.released_date || p.prepaid_date || p.start_date);
+      for (let i = 0; i < months; i++) {
+        const d = new Date(anchor.getFullYear(), anchor.getMonth() + i, 1);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        ensure(key);
+        byMonth[key].total += monthly;
+        byMonth[key].installment += monthly;
+      }
+    } else {
+      const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
+      const d = new Date(dateStr);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      ensure(key);
+      byMonth[key].total += p.amount;
+      byMonth[key].oneTime += p.amount;
+    }
   });
+
   return Object.keys(byMonth).sort().map(k => {
     const [yr, mo] = k.split('-');
-    return { key: k, month: moNames[parseInt(mo) - 1], year: yr, v: byMonth[k] };
+    return { key: k, month: moNames[parseInt(mo) - 1], year: yr, ...byMonth[k] };
   });
 }
 
+type EarnDataPoint = { key: string; month: string; year: string; total: number; oneTime: number; installment: number };
+
+// One entry per actual payment event — used by the chart
+type PaymentEvent = { date: Date; amount: number; type: 'one_time' | 'installment'; cum: number };
+type EscrowEvent  = { date: Date; amount: number; cum: number };
+
+function computePaymentEvents(projects: Project[]): { earned: PaymentEvent[]; inEscrow: EscrowEvent[] } {
+  // Earned = Released projects (money provider has received)
+  const rawEarned: { date: Date; amount: number; type: 'one_time' | 'installment' }[] = [];
+  projects.filter(p => p.status === 'Released').forEach(p => {
+    const isInstallment = p.payment_type === 'installments' && (p.installment_months ?? 1) > 1;
+    if (isInstallment) {
+      const months = p.installment_months!;
+      const monthly = p.amount / months;
+      const anchor = new Date(p.released_date || p.prepaid_date || p.start_date);
+      for (let i = 0; i < months; i++) {
+        rawEarned.push({ date: new Date(anchor.getFullYear(), anchor.getMonth() + i, 1), amount: monthly, type: 'installment' });
+      }
+    } else {
+      const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
+      rawEarned.push({ date: new Date(dateStr), amount: p.amount, type: 'one_time' });
+    }
+  });
+  rawEarned.sort((a, b) => a.date.getTime() - b.date.getTime());
+  let cumE = 0;
+  const earned: PaymentEvent[] = rawEarned.map(r => { cumE += r.amount; return { ...r, cum: cumE }; });
+
+  // In Escrow = Funded projects (money locked, not yet released to provider)
+  const rawEscrow: { date: Date; amount: number }[] = [];
+  projects.filter(p => p.status === 'Funded').forEach(p => {
+    const dateStr = p.prepaid_date || p.start_date;
+    rawEscrow.push({ date: new Date(dateStr), amount: p.amount });
+  });
+  rawEscrow.sort((a, b) => a.date.getTime() - b.date.getTime());
+  let cumS = 0;
+  const inEscrow: EscrowEvent[] = rawEscrow.map(r => { cumS += r.amount; return { ...r, cum: cumS }; });
+
+  return { earned, inEscrow };
+}
+
 // --- SUB-COMPONENT: CHART ---
-// earnData: sorted monthly totals [{ month, year, v }]
-function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: string; year: string; v: number }[] }) {
+// Step chart: blue solid = Released earnings, amber dashed = Funded in escrow.
+function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; inEscrow: EscrowEvent[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,20 +103,9 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
     if (!el) return;
     el.innerHTML = '';
 
-    // Build cumulative daily points across ALL months using smoothstep S-curve per month
-    function smoothstep(t: number) { return t * t * (3 - 2 * t); }
-    const dailyPts: { month: string; year: string; dayOfMonth: number; v: number }[] = [];
-    let cumTotal = 0;
-    earnData.forEach(mo => {
-      const prev = cumTotal;
-      const inc  = mo.v;
-      for (let d = 0; d < 30; d++) {
-        const t = smoothstep(d / 29);
-        dailyPts.push({ month: mo.month, year: mo.year, dayOfMonth: d + 1, v: prev + inc * t });
-      }
-      cumTotal += inc;
-    });
-    const grandTotal = cumTotal;
+    const grandEarned = earned.length > 0 ? earned[earned.length - 1].cum : 0;
+    const grandEscrow = inEscrow.length > 0 ? inEscrow[inEscrow.length - 1].cum : 0;
+    const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     // Header
     const hdr = document.createElement('div');
@@ -62,13 +115,15 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
     lbl.textContent = 'Earnings over time';
     const amtEl = document.createElement('div');
     amtEl.style.cssText = 'font-size: 28px; font-weight: 700; color: #0F172A; line-height: 1;';
-    amtEl.textContent = fmt(grandTotal);
+    amtEl.textContent = fmt(grandEarned);
     const dateEl = document.createElement('div');
     dateEl.style.cssText = 'font-size: 11px; color: #0984E3; font-weight: 500; margin-top: 4px; min-height: 18px;';
     hdr.appendChild(lbl); hdr.appendChild(amtEl); hdr.appendChild(dateEl);
     el.appendChild(hdr);
 
-    if (dailyPts.length === 0 || grandTotal === 0) {
+    const allEvents = [...earned, ...inEscrow].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    if (allEvents.length === 0 || (grandEarned === 0 && grandEscrow === 0)) {
       const empty = document.createElement('div');
       empty.style.cssText = 'padding: 60px 20px; text-align: center; font-size: 12px; color: #94A3B8;';
       empty.textContent = 'No earnings data yet';
@@ -79,12 +134,21 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
     const W = 900, H = 220, BOT = 26, TOP = 16, PAD = 10;
     const cH = H - BOT - TOP;
     const ns = 'http://www.w3.org/2000/svg';
+    const maxV = Math.max(grandEarned, grandEscrow, 1);
+
+    // Time range spans all events (earned + escrow)
+    const allTimes = allEvents.map(e => e.date.getTime());
+    const t0 = Math.min(...allTimes);
+    const t1 = Math.max(...allTimes);
+    const tRange = t1 > t0 ? t1 - t0 : 1;
+    const dateToX = (d: Date) => PAD + (d.getTime() - t0) / tRange * (W - 2 * PAD);
+    const valToY  = (v: number) => TOP + cH * (1 - v / maxV);
 
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svg.style.cssText = 'display: block; width: 100%;';
 
-    // Gradient
+    // Gradient for earned area
     const defs = document.createElementNS(ns, 'defs');
     const grad = document.createElementNS(ns, 'linearGradient');
     grad.setAttribute('id', 'earn_grad');
@@ -93,46 +157,72 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
     const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#ffffff'); s2.setAttribute('stop-opacity','0');
     grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
 
-    const maxV = grandTotal || 1;
-    const ePts = dailyPts.map((_, i) => [
-      PAD + i / (dailyPts.length - 1) * (W - PAD * 2),
-      TOP + cH * (1 - dailyPts[i].v / maxV),
-    ]);
+    const botY = H - BOT;
 
-    function bez(ps: number[][]): string {
-      if (ps.length < 2) return '';
-      let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
-      for (let i = 0; i < ps.length - 1; i++) {
-        const dx = ps[i+1][0] - ps[i][0], t = 0.45;
-        const cp1x = ps[i][0] + dx*t, cp1y = ps[i][1];
-        const cp2x = ps[i+1][0] - dx*t, cp2y = ps[i+1][1];
-        path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
-      }
-      return path;
+    // --- Escrow step line (amber, dashed) ---
+    if (inEscrow.length > 0) {
+      let escrowPath = `M${PAD.toFixed(1)},${valToY(0).toFixed(1)}`;
+      inEscrow.forEach(evt => {
+        escrowPath += ` H${dateToX(evt.date).toFixed(1)} V${valToY(evt.cum).toFixed(1)}`;
+      });
+      escrowPath += ` H${(W - PAD).toFixed(1)}`;
+      const escrowLine = document.createElementNS(ns,'path');
+      escrowLine.setAttribute('d', escrowPath); escrowLine.setAttribute('fill','none');
+      escrowLine.setAttribute('stroke','#F9AB00'); escrowLine.setAttribute('stroke-width','1.5');
+      escrowLine.setAttribute('stroke-dasharray','5 3'); escrowLine.setAttribute('stroke-linecap','square');
+      svg.appendChild(escrowLine);
+      inEscrow.forEach(evt => {
+        const x = dateToX(evt.date), y = valToY(evt.cum);
+        const mk = document.createElementNS(ns,'circle');
+        mk.setAttribute('cx', x.toFixed(1)); mk.setAttribute('cy', y.toFixed(1)); mk.setAttribute('r', '4');
+        mk.setAttribute('fill', '#F9AB00'); mk.setAttribute('stroke', '#fff'); mk.setAttribute('stroke-width', '1.5');
+        svg.appendChild(mk);
+      });
     }
 
-    const linePath = bez(ePts);
-    const areaPath = linePath + ` L${ePts[ePts.length-1][0].toFixed(1)},${H-BOT} L${ePts[0][0].toFixed(1)},${H-BOT} Z`;
+    // --- Earned area + step line (blue, solid) ---
+    if (earned.length > 0) {
+      let linePath = `M${PAD.toFixed(1)},${valToY(0).toFixed(1)}`;
+      earned.forEach(evt => {
+        linePath += ` H${dateToX(evt.date).toFixed(1)} V${valToY(evt.cum).toFixed(1)}`;
+      });
+      linePath += ` H${(W - PAD).toFixed(1)}`;
+      const areaPath = linePath + ` V${botY} H${PAD.toFixed(1)} Z`;
+      const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#earn_grad)');
+      svg.appendChild(area);
+      const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
+      line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','square');
+      svg.appendChild(line);
+      earned.forEach(evt => {
+        const x = dateToX(evt.date), y = valToY(evt.cum);
+        const color = evt.type === 'one_time' ? '#00C896' : '#A142F4';
+        const mk = document.createElementNS(ns,'circle');
+        mk.setAttribute('cx', x.toFixed(1)); mk.setAttribute('cy', y.toFixed(1)); mk.setAttribute('r', '4');
+        mk.setAttribute('fill', color); mk.setAttribute('stroke', '#fff'); mk.setAttribute('stroke-width', '1.5');
+        svg.appendChild(mk);
+      });
+    }
 
-    const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#earn_grad)');
-    svg.appendChild(area);
-    const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
-    line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
-    svg.appendChild(line);
-
-    // Month labels — one per month at the start of each month's segment
-    earnData.forEach((mo, m) => {
-      const x = PAD + m / (earnData.length - 1) * (W - PAD * 2);
+    // X-axis labels: one per unique month, from all events
+    const shownMonths = new Set<string>();
+    allEvents.forEach((evt, i) => {
+      const mk = `${evt.date.getFullYear()}-${evt.date.getMonth()}`;
+      if (shownMonths.has(mk)) return;
+      shownMonths.add(mk);
+      const x = dateToX(evt.date);
       const lbl2 = document.createElementNS(ns,'text');
       lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 7));
-      lbl2.setAttribute('text-anchor', m === 0 ? 'start' : m === earnData.length - 1 ? 'end' : 'middle');
+      lbl2.setAttribute('text-anchor', i === 0 ? 'start' : i === allEvents.length - 1 ? 'end' : 'middle');
       lbl2.setAttribute('font-size','10'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
       lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-      lbl2.textContent = mo.month;
+      const asPayment = evt as PaymentEvent;
+      lbl2.textContent = asPayment.type === 'one_time'
+        ? `${moNames[evt.date.getMonth()]} ${evt.date.getDate()}`
+        : moNames[evt.date.getMonth()];
       svg.appendChild(lbl2);
     });
 
-    // Hover tracker
+    // Hover: tracks earned line
     const DOT_R = 4;
     const vl = document.createElementNS(ns,'line');
     vl.setAttribute('stroke','#0984E3'); vl.setAttribute('stroke-width','1'); vl.setAttribute('stroke-dasharray','3 2'); vl.style.display='none';
@@ -148,24 +238,60 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
     ov.addEventListener('mousemove', (e) => {
       const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
       const ctm = svg.getScreenCTM(); if (!ctm) return;
-      const mx = pt.matrixTransform(ctm.inverse()).x;
-      let best = 0, bestD = Infinity;
-      ePts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
-      const cx = ePts[best][0], cy = ePts[best][1];
-      vl.setAttribute('x1', cx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
-      vl.setAttribute('x2', cx.toFixed(1)); vl.setAttribute('y2', String(H-BOT));
-      dot.setAttribute('cx', cx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
+      const mx = Math.max(PAD, Math.min(W - PAD, pt.matrixTransform(ctm.inverse()).x));
+      const tAtX = t0 + (mx - PAD) / (W - 2 * PAD) * tRange;
+      let cumAtX = 0;
+      let nearEvt: PaymentEvent | null = earned[0] ?? null;
+      for (const evt of earned) {
+        if (evt.date.getTime() <= tAtX) { cumAtX = evt.cum; nearEvt = evt; }
+        else break;
+      }
+      const cy = valToY(cumAtX);
+      vl.setAttribute('x1', mx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
+      vl.setAttribute('x2', mx.toFixed(1)); vl.setAttribute('y2', String(H - BOT));
+      dot.setAttribute('cx', mx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
       vl.style.display=''; dot.style.display='';
-      amtEl.textContent = fmt(dailyPts[best].v);
-      dateEl.textContent = dailyPts[best].dayOfMonth + ' ' + dailyPts[best].month + ' ' + dailyPts[best].year;
+      amtEl.textContent = fmt(cumAtX);
+      if (nearEvt) {
+        const d = nearEvt.date;
+        dateEl.textContent = `${moNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+      }
     });
     ov.addEventListener('mouseleave', () => {
       vl.style.display='none'; dot.style.display='none';
-      amtEl.textContent = fmt(grandTotal); dateEl.textContent = '';
+      amtEl.textContent = fmt(grandEarned); dateEl.textContent = '';
     });
 
     el.appendChild(svg);
-  }, [earnData]);
+
+    // Legend
+    const hasOneTime     = earned.some(e => e.type === 'one_time');
+    const hasInstallment = earned.some(e => e.type === 'installment');
+    const hasEscrow      = inEscrow.length > 0;
+    if (hasOneTime || hasInstallment || hasEscrow) {
+      const legend = document.createElement('div');
+      legend.style.cssText = 'display:flex;gap:16px;padding:4px 20px 14px;font-size:11px;font-weight:600;color:#64748b;flex-wrap:wrap;';
+      if (hasOneTime) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        item.innerHTML = `<svg width="10" height="10" viewBox="-5 -5 10 10" style="flex-shrink:0"><polygon points="0,-4 4,0 0,4 -4,0" fill="#00C896"/></svg>One-time payment`;
+        legend.appendChild(item);
+      }
+      if (hasInstallment) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        item.innerHTML = `<svg width="10" height="10" viewBox="-5 -5 10 10" style="flex-shrink:0"><circle cx="0" cy="0" r="4" fill="#A142F4"/></svg>Monthly installment`;
+        legend.appendChild(item);
+      }
+      if (hasEscrow) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        item.innerHTML = `<svg width="16" height="10" viewBox="0 0 16 10" style="flex-shrink:0"><line x1="0" y1="5" x2="16" y2="5" stroke="#F9AB00" stroke-width="1.5" stroke-dasharray="4 2"/><circle cx="8" cy="5" r="3" fill="#F9AB00"/></svg>In escrow`;
+        legend.appendChild(item);
+      }
+      el.appendChild(legend);
+    }
+  }, [earned, inEscrow]);
 
   return (
     <div
@@ -179,8 +305,7 @@ function EarningsOverTimeChart({ earnData }: { earnData: { key: string; month: s
 function SettingsModal({ title, subtitle, onClose, onSave, children }: {
   title: string; subtitle: string; onClose: () => void; onSave: () => void; children: React.ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
   if (!mounted) return null;
 
   return createPortal(
@@ -644,8 +769,9 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [user, setUser] = useState<UserProfile>(initialUser ?? DEFAULT_USER);
   const earnData = computeMonthlyEarnings(projects);
-  const total = earnData.reduce((a, b) => a + b.v, 0);
-  const lastMonth = earnData.length > 0 ? earnData[earnData.length - 1].v : 0;
+  const { earned: paymentEvents, inEscrow: escrowEvents } = computePaymentEvents(projects);
+  const total = earnData.reduce((a, b) => a + b.total, 0);
+  const escrowTotal = escrowEvents.length > 0 ? escrowEvents[escrowEvents.length - 1].cum : 0;
   const avg = earnData.length > 0 ? Math.round(total / earnData.length) : 0;
 
   return (
@@ -676,8 +802,8 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
         <div className="fade-in">
           <div className="stat-row" style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
             {[
-              { label: 'Total Earned (6mo)', val: total, color: '#00C896' },
-              { label: 'This Month', val: lastMonth, color: '#4285F4' },
+              { label: 'Total Released', val: total, color: '#00C896' },
+              { label: 'In Escrow', val: escrowTotal, color: '#F9AB00' },
               { label: 'Avg / Month', val: avg, color: '#94A3B8' },
             ].map(({ label, val, color }) => (
               <div key={label} className="stat-card" style={{ flex: 1, padding: 20, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
@@ -689,18 +815,34 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
           </div>
 
           <div style={{ marginBottom: 24 }}>
-             <EarningsOverTimeChart earnData={earnData} />
+             <EarningsOverTimeChart earned={paymentEvents} inEscrow={escrowEvents} />
           </div>
 
           <div className="card">
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-light)', fontSize: 15, fontWeight: 700 }}>Monthly Breakdown</div>
-            {earnData.map((row, i) => (
-              <div key={row.key} className="tbl-row" style={{ display: 'flex', padding: '12px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--border-light)' }}>
-                <div style={{ flex: 1, fontWeight: 600 }}>{row.month} {row.year}</div>
-                <div style={{ flex: 1, textAlign: 'right', color: '#0984E3', fontWeight: 600 }}>{fmt(row.v)}</div>
-                <div style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{fmt(Math.round(row.v * 0.95))}</div>
-              </div>
-            ))}
+            {earnData.map((row, i) => {
+              const typeLabel = row.oneTime > 0 && row.installment === 0 ? 'one_time'
+                : row.installment > 0 && row.oneTime === 0 ? 'installment'
+                : row.oneTime > 0 && row.installment > 0 ? 'mixed' : null;
+              return (
+                <div key={row.key} className="tbl-row" style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--border-light)' }}>
+                  <div style={{ flex: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {row.month} {row.year}
+                    {typeLabel === 'one_time' && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#00C896', background: 'rgba(0,200,150,0.1)', border: '1px solid rgba(0,200,150,0.25)', padding: '2px 7px', borderRadius: 99 }}>One-time</span>
+                    )}
+                    {typeLabel === 'installment' && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#A142F4', background: 'rgba(161,66,244,0.1)', border: '1px solid rgba(161,66,244,0.25)', padding: '2px 7px', borderRadius: 99 }}>Installment</span>
+                    )}
+                    {typeLabel === 'mixed' && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#F9AB00', background: 'rgba(249,171,0,0.1)', border: '1px solid rgba(249,171,0,0.25)', padding: '2px 7px', borderRadius: 99 }}>Mixed</span>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'right', color: '#0984E3', fontWeight: 600 }}>{fmt(row.total)}</div>
+                  <div style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{fmt(Math.round(row.total * 0.95))}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

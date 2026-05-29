@@ -142,7 +142,6 @@ export async function requestInvoiceDeletion(id: string) {
 
     if (error || !invoiceData) return { error: 'Invoice not found' };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const customer = invoiceData.customers as any;
 
     await supabase.from('invoices').update({ status: 'pending_deletion' }).eq('id', id);

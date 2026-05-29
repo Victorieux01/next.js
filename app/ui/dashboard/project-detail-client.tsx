@@ -1,20 +1,31 @@
 'use client';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project, ProjectDispute } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus, sendClientPortalLink } from '@/app/lib/coredon-actions';
+import { Project, ProjectDispute, ProjectRush, getDeliverables, getProjectMeta, getJobProfile, PLAN_CONFIGS, calcPayout, type PlanKey } from '@/app/lib/coredon-types';
+import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus, sendClientPortalLink, addRush } from '@/app/lib/coredon-actions';
 import ChatSection from './chat-section';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 }
 
-function getDeliverables(description: string): string {
-  return (description || '').split('\n\n[meta]::')[0].trim();
-}
 
 function Badge({ status }: { status: string }) {
-  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444' };
+  const dotColors: Record<string, string> = {
+    Draft:       '#94A3B8',
+    Invited:     '#F59E0B',
+    Processing:  '#8B5CF6',
+    Funded:      '#00C896',
+    'In Review': '#F97316',
+    Released:    '#0984E3',
+    Archived:    '#64748B',
+    Disputed:    '#EF4444',
+    // legacy
+    Pending:     '#F59E0B',
+    Dispute:     '#EF4444',
+    Ready:       '#A142F4',
+    Revision:    '#F97316',
+  };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColors[status] || '#94A3B8', display: 'inline-block' }} />
@@ -57,9 +68,9 @@ function parseDisputeReason(raw: string): { original: string; notes: { date: str
   return { original, notes };
 }
 
-interface Props { project: Project; providerName: string }
+interface Props { project: Project; providerName: string; userPlan?: PlanKey }
 
-export default function ProjectDetailClient({ project: p, providerName }: Props) {
+export default function ProjectDetailClient({ project: p, providerName, userPlan = 'starter' }: Props) {
   const router = useRouter();
 
   // Dispute modal state: null | 'reason' | 'confirm'
@@ -75,11 +86,16 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
   const [revNote,     setRevNote]     = useState('');
 
   // Loading states
-  const [submitting, setSubmitting] = useState(false);
-  const [portalState, setPortalState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [submitting,   setSubmitting]   = useState(false);
+  const [portalState,  setPortalState]  = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [accelPayout,  setAccelPayout]  = useState(false);
 
-  const isDispute  = p.status === 'Dispute';
+  const isDispute  = p.status === 'Dispute'  || p.status === 'Disputed';
   const isFinished = p.status === 'Released';
+
+  const payMethod = (p.prepaid_method?.toLowerCase().includes('acss') || p.prepaid_method?.toLowerCase().includes('debit')) ? 'acss' : 'card';
+  const payout    = calcPayout(p.amount, userPlan, payMethod);
+  const planCfg   = PLAN_CONFIGS[userPlan];
 
   let durationVal = '—';
   if (p.start_date) {
@@ -401,6 +417,90 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
         </div>
       </div>
 
+      {/* Shared With */}
+      {(() => {
+        const meta = getProjectMeta(p.description);
+        const clientName = meta.clientName || p.email?.split('@')[0] || 'Client';
+        const hasFunded   = !!p.prepaid_date;
+        const hasApproved = !!p.released_date;
+        const hasDispute  = p.status === 'Dispute';
+        const avatarColor = '#6366F1';
+        const initials = clientName.split(' ').map((w: string) => w[0] || '').join('').slice(0, 2).toUpperCase() || '?';
+
+        return (
+          <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Shared With</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 42, height: 42, borderRadius: '50%', background: avatarColor + '22', color: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                {initials}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{clientName}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{p.email}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {hasFunded && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#00C896', background: 'rgba(0,200,150,0.12)', borderRadius: 20, padding: '3px 10px' }}>Funded</span>
+                )}
+                {hasApproved && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0984E3', background: 'rgba(9,132,227,0.12)', borderRadius: 20, padding: '3px 10px' }}>Approved</span>
+                )}
+                {hasDispute && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', background: 'rgba(239,68,68,0.12)', borderRadius: 20, padding: '3px 10px' }}>In Dispute</span>
+                )}
+                {!hasFunded && !hasApproved && !hasDispute && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 20, padding: '3px 10px' }}>Pending</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Payout Breakdown */}
+      <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
+          Payout Breakdown — {planCfg.label} plan
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Project amount</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(p.amount)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Coredon fee ({planCfg.feePercent}%)</span>
+            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.platformFee)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Stripe fee ({payMethod === 'acss' ? 'ACSS — 1% + $0.30, max $4.00' : 'Card — 2.9% + $0.30'})</span>
+            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.stripeFee)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 4 }}>
+            <span>You receive</span>
+            <span style={{ color: '#00C896' }}>{fmt(Math.max(0, payout.veReceives))}</span>
+          </div>
+        </div>
+        {p.status === 'Released' && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Standard payout arrives in 2–3 business days. Accelerated payout (1% Stripe fee) transfers within hours.
+            </div>
+            <button
+              onClick={() => setAccelPayout(true)}
+              style={{ background: 'rgba(0,200,150,0.12)', color: '#00C896', border: '1px solid rgba(0,200,150,0.3)', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+            >
+              Get Paid Now (1% fee)
+            </button>
+          </div>
+        )}
+        {(p.status === 'In Review' || p.status === 'Ready') && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Auto-release in <strong>{planCfg.autoReleaseDays} days</strong> if client does not respond.
+            Reminders sent at day 3, 7{planCfg.autoReleaseDays > 7 ? ', and 10' : ''}.
+          </div>
+        )}
+      </div>
+
       {/* Revision Requests Section */}
       {(p.revisions || []).length > 0 && (
         <RevisionRequestsSection revisions={p.revisions || []} />
@@ -450,6 +550,7 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
       </div>
 
       <UploadSection projectId={p.id} versions={p.versions || []} clientEmail={p.email} clientName={p.name} projectName={p.name} disabled={isDispute} />
+      <RushesSection projectId={p.id} rushes={p.rushes || []} disabled={isDispute} />
       <FilesSection files={p.files || []} />
 
       <ChatSection
@@ -565,6 +666,49 @@ export default function ProjectDetailClient({ project: p, providerName }: Props)
                 onClick={handleAddRevision}
               >
                 {submitting ? 'Saving…' : 'Save Note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Accelerated Payout Modal ── */}
+      {accelPayout && (
+        <div className="modal-overlay" onClick={() => setAccelPayout(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(0,200,150,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Accelerated Payout</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Receive your funds within hours instead of 2–3 business days.
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+              {[
+                ['Standard payout', fmt(Math.max(0, payout.veReceives))],
+                ['Accelerated fee (1% Stripe)', '− ' + fmt(Math.max(0, payout.veReceives) * 0.01)],
+                ['You receive instantly', fmt(Math.max(0, payout.veReceives) * 0.99)],
+              ].map(([label, val]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+                  <span style={{ fontWeight: 700 }}>{val}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+              By proceeding, you accept the 1% Stripe Instant Payout fee and waive the 3-day chargeback retention window.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" onClick={() => setAccelPayout(false)}>Cancel</button>
+              <button
+                style={{ background: '#00C896', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+                onClick={() => { setAccelPayout(false); }}
+              >
+                Confirm Instant Payout
               </button>
             </div>
           </div>
@@ -815,20 +959,69 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
   const [sending,    setSending]    = useState(false);
   const [notifState, setNotifState] = useState<'idle' | 'sent' | 'error'>('idle');
   const [error,      setError]      = useState<string | null>(null);
+  const [jobInfo,    setJobInfo]    = useState<{ estimatedMinutes: number; costUsd: number; fileName: string } | null>(null);
+
+  const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'mxf', 'webm']);
+
+  function handleFileSelect(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const videoFile = Array.from(files).find(f =>
+      VIDEO_EXTS.has(f.name.split('.').pop()?.toLowerCase() ?? '')
+    );
+    if (videoFile) {
+      const sizeGb = videoFile.size / (1024 ** 3);
+      const profile = getJobProfile(sizeGb);
+      setJobInfo({ ...profile, fileName: videoFile.name });
+    } else {
+      setJobInfo(null);
+    }
+    handleFiles(files);
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
     setError(null);
     for (const file of Array.from(files)) {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('projectId', projectId);
-      const res  = await fetch('/api/upload-project-file', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (!res.ok) { setError(json.error ?? 'Upload failed'); break; }
+      const ext     = file.name.split('.').pop()?.toLowerCase() ?? '';
+      const isVideo = VIDEO_EXTS.has(ext);
+
+      if (isVideo) {
+        const sizeGb = file.size / (1024 ** 3);
+        // Wake up RunPod L4 pod during upload so it's warm when the job arrives
+        fetch('/api/railway-wakeup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, fileSizeGb: sizeGb }),
+        }).catch(() => {});
+
+        // Get B2 presigned upload URL — browser uploads directly to B2
+        const initRes = await fetch('/api/upload-project-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, fileName: file.name, fileSize: file.size, mimeType: file.type }),
+        });
+        const initJson = await initRes.json();
+        if (!initRes.ok) { setError(initJson.error ?? 'Upload init failed'); break; }
+
+        const b2Res = await fetch(initJson.presignedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'video/mp4' },
+          body: file,
+        });
+        if (!b2Res.ok) { setError('Upload to storage failed'); break; }
+      } else {
+        // Non-video files: server-side upload via FormData
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('projectId', projectId);
+        const res  = await fetch('/api/upload-project-file', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok) { setError(json.error ?? 'Upload failed'); break; }
+      }
     }
     setUploading(false);
+    setJobInfo(null);
     router.refresh();
   }
 
@@ -845,7 +1038,7 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
         </div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Upload Your Work</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Upload deliverables for client review</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Upload deliverables for client review — videos are processed with FFmpeg watermark</div>
         </div>
       </div>
 
@@ -870,43 +1063,66 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
           </div>
         </div>
       ) : (
-        <div
-          onDragOver={e => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-          onClick={() => inputRef.current?.click()}
-          style={{
-            border: `1.5px dashed ${dragging ? 'var(--blue)' : 'var(--border)'}`,
-            borderRadius: 10,
-            padding: '28px 20px',
-            textAlign: 'center',
-            cursor: 'pointer',
-            background: dragging ? 'var(--blue-bg)' : 'var(--bg)',
-            transition: 'all 0.15s',
-            marginBottom: 20,
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept=".mp4,.mov,.zip,.pdf,.png,.jpg,.jpeg,.webp"
-            style={{ display: 'none' }}
-            onChange={e => handleFiles(e.target.files)}
-          />
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
+        <>
+          {/* RunPod GPU processing estimate banner */}
+          {jobInfo && (
+            <div style={{ background: 'rgba(161,66,244,0.08)', border: '1px solid rgba(161,66,244,0.25)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(161,66,244,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A142F4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M9 2v2M15 20v2M9 20v2M2 15h2M2 9h2M20 15h2M20 9h2"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#A142F4' }}>GPU processing estimate for {jobInfo.fileName}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  RunPod L4 · ~{jobInfo.estimatedMinutes} min · FFmpeg h264_nvenc · watermark + 4K→1080p
+                </div>
+              </div>
+              {uploading && (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A142F4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              )}
+            </div>
+          )}
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); handleFileSelect(e.dataTransfer.files); }}
+            onClick={() => inputRef.current?.click()}
+            style={{
+              border: `1.5px dashed ${dragging ? 'var(--blue)' : 'var(--border)'}`,
+              borderRadius: 10,
+              padding: '28px 20px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: dragging ? 'var(--blue-bg)' : 'var(--bg)',
+              transition: 'all 0.15s',
+              marginBottom: 20,
+            }}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept=".mp4,.mov,.zip,.pdf,.png,.jpg,.jpeg,.webp"
+              style={{ display: 'none' }}
+              onChange={e => handleFileSelect(e.target.files)}
+            />
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+              {uploading ? 'Uploading…' : <><span>Drop files here or </span><span style={{ color: 'var(--blue)' }}>browse</span></>}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>.mp4 · .mov · .zip · .pdf · .png · .jpg — max 50 GB</div>
+            {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-            {uploading ? 'Uploading…' : <><span>Drop files here or </span><span style={{ color: 'var(--blue)' }}>browse</span></>}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>.mp4 · .mov · .zip · .pdf · .png · .jpg — max 10 GB</div>
-          {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
-        </div>
+        </>
       )}
 
       {/* Deliverables list */}
@@ -976,6 +1192,131 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Rushes Section ─────────────────────────────────────────────────────────
+function RushesSection({ projectId, rushes, disabled }: {
+  projectId: string;
+  rushes: ProjectRush[];
+  disabled?: boolean;
+}) {
+  const router   = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+  const [note,      setNote]      = useState('');
+
+  async function handleRushFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    for (const file of Array.from(files)) {
+      const sizeMb = file.size / (1024 * 1024);
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('projectId', projectId);
+      fd.append('isRush', 'true');
+      const res  = await fetch('/api/upload-project-file', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error ?? 'Upload failed'); break; }
+      await addRush(projectId, file.name, sizeMb, note.trim() || undefined);
+    }
+    setUploading(false);
+    setNote('');
+    router.refresh();
+  }
+
+  const totalSizeGb = rushes.reduce((sum, r) => sum + ((r.total_size_mb ?? 0) / 1024), 0);
+
+  return (
+    <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(249,115,22,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+          </svg>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Rushes</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Raw footage — direct upload, no FFmpeg processing</div>
+        </div>
+        {rushes.length > 0 && (
+          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+            <span>{rushes.length} file{rushes.length !== 1 ? 's' : ''}</span>
+            <span>{totalSizeGb.toFixed(2)} GB</span>
+          </div>
+        )}
+      </div>
+
+      {disabled ? (
+        <div style={{ borderRadius: 10, padding: '14px 16px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', fontSize: 13, color: '#EF4444', fontWeight: 600 }}>
+          Rush uploads disabled during dispute
+        </div>
+      ) : (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={e => handleRushFiles(e.target.files)}
+          />
+          {rushes.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Rush Manifest · {rushes.length} file{rushes.length !== 1 ? 's' : ''}
+              </div>
+              <div style={{ border: '1px solid var(--border-light)', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 12px', padding: '7px 12px', borderBottom: '1px solid var(--border-light)', background: 'var(--bg)' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>File</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', minWidth: 60, textAlign: 'right' }}>Size</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', minWidth: 80 }}>Date</span>
+                </div>
+                {rushes.map((r, i) => (
+                  <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 12px', alignItems: 'center', padding: '10px 12px', borderTop: i > 0 ? '1px solid var(--border-light)' : 'none' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{r.name}</div>
+                      {r.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{r.note}</div>}
+                    </div>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {r.total_size_mb ? (r.total_size_mb >= 1024 ? (r.total_size_mb / 1024).toFixed(2) + ' GB' : r.total_size_mb.toFixed(0) + ' MB') : '—'}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 80 }}>{r.date}</span>
+                  </div>
+                ))}
+                <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Total</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{totalSizeGb.toFixed(2)} GB</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Optional note for this rush batch (e.g. 'Wedding ceremony footage — 2h')"
+            rows={2}
+            style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', color: 'var(--text-primary)', background: 'var(--surface)', resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }}
+          />
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: uploading ? 'var(--bg)' : 'rgba(249,115,22,0.12)', color: '#F97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.7 : 1 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            {uploading ? 'Uploading rushes…' : 'Upload Rush Files'}
+          </button>
+          {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            ProRes · RAW · any format — max 500 GB per file. Billed separately via storage packs.
+          </div>
+        </>
+      )}
     </div>
   );
 }

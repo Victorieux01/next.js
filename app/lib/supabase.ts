@@ -1,16 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDatabase = Record<string, { Row: any; Insert: any; Update: any }>;
 
 declare global {
-  // eslint-disable-next-line no-var
   var _supabaseAdmin: SupabaseClient | undefined;
 }
 
 function getSupabaseClient(): SupabaseClient {
   if (!global._supabaseAdmin) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global._supabaseAdmin = (createClient as any)(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,

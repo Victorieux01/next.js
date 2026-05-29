@@ -130,6 +130,7 @@ function DatePicker({ value, onChange, hasError }: {
 interface Step1 {
   title: string;
   clientName: string;
+  companyName: string;
   email: string;
   deliverables: string;
   deliveryDate: string;
@@ -141,6 +142,7 @@ interface Step2 {
   artisticCost: string;
   revisions: string;
   internalNote: string;
+  acceptCard: boolean;
 }
 
 // ── Shared input style ───────────────────────────────────────────────────────
@@ -202,7 +204,7 @@ function StepBar({ step }: { step: 1 | 2 }) {
 
 // ── Contract preview ─────────────────────────────────────────────────────────
 function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
-  const refNum = useRef(Math.floor(Math.random() * 90000 + 10000));
+  const [refNum] = useState(() => Math.floor(Math.random() * 90000 + 10000));
   const today = new Date().toISOString().slice(0, 10);
 
   const hourlyRate    = parseFloat(s2.hourlyRate)    || 0;
@@ -231,7 +233,7 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
         </div>
         <div style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 10 }}>
           <div>Date <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{today}</span></div>
-          <div>Ref <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>#{refNum.current}</span></div>
+          <div>Ref <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>#{refNum}</span></div>
         </div>
       </div>
 
@@ -444,10 +446,10 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
   const [submitError, setSubmitError] = useState('');
 
   const [s1, setS1] = useState<Step1>({
-    title: '', clientName: '', email: '', deliverables: '', deliveryDate: '',
+    title: '', clientName: '', companyName: '', email: '', deliverables: '', deliveryDate: '',
   });
   const [s2, setS2] = useState<Step2>({
-    hourlyRate: '', hours: '', technicalCost: '0', artisticCost: '0', revisions: '', internalNote: '',
+    hourlyRate: '', hours: '', technicalCost: '0', artisticCost: '0', revisions: '', internalNote: '', acceptCard: false,
   });
 
   function upd1(field: keyof Step1, val: string) {
@@ -565,7 +567,7 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
             </Field>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Client Name / Company" required error={errors1.clientName}>
+              <Field label="Client Name" required error={errors1.clientName}>
                 <ClientCombobox
                   clients={clients}
                   value={s1.clientName}
@@ -580,6 +582,20 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
                 <input style={errInp(!!errors1.email)} placeholder="client@example.com" type="email" value={s1.email} onChange={e => upd1('email', e.target.value)} />
               </Field>
             </div>
+
+            <Field label="Company Name" hint="— optional, B2B only">
+              <input
+                style={inp}
+                placeholder="e.g. Acme Productions Inc."
+                value={s1.companyName}
+                onChange={e => upd1('companyName', e.target.value)}
+              />
+            </Field>
+            {s1.companyName.trim() && (
+              <div style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.3)', borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+                <strong>B2B notice:</strong> By entering a company name, you confirm your client is a business (B2B). You assume legal responsibility if card fees are passed to a Quebec consumer — this is prohibited under the LPC (fine up to $125 000).
+              </div>
+            )}
 
             <Field label="Deliverables Description" required error={errors1.deliverables} hint="— what is delivered exactly (qualitative)">
               <textarea
@@ -636,6 +652,39 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
             <Field label="Included Revisions" error={errors2.revisions} hint="— optional">
               <NumInput value={s2.revisions} onChange={v => upd2('revisions', v)} placeholder="e.g. 3" />
             </Field>
+
+            {/* Card payment toggle */}
+            <div style={{ background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: s2.acceptCard ? 10 : 0 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Accept credit/debit card</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>2.9% + $0.30 — deducted from your payout</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setS2(p => ({ ...p, acceptCard: !p.acceptCard }))}
+                  style={{
+                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', flexShrink: 0,
+                    background: s2.acceptCard ? '#00C896' : 'var(--border)',
+                    position: 'relative', transition: 'background 0.2s',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 3, left: s2.acceptCard ? 23 : 3,
+                    width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                    transition: 'left 0.2s',
+                  }} />
+                </button>
+              </div>
+              {s2.acceptCard && (
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  Card fees are absorbed by you (the VE). Coredon keeps its full platform fee.
+                  {s1.companyName.trim()
+                    ? ' B2B client — card fee passthrough is permitted.'
+                    : ' If your client is in Quebec (B2C), you cannot pass card fees to them (LPC).'}
+                </div>
+              )}
+            </div>
 
             <Field label="Internal Note" hint="— visible only to you, not in contract">
               <textarea

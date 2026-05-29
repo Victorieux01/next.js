@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Project, ProjectDispute } from '@/app/lib/coredon-types';
+import { Project, ProjectDispute, getDeliverables } from '@/app/lib/coredon-types';
 import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
 import ChatSection from './chat-section';
 
@@ -31,7 +31,12 @@ function parseDisputeReason(raw: string): { original: string; notes: { date: str
 
 function Badge({ status }: { status: string }) {
   const dotColors: Record<string, string> = {
-    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444',
+    Funded:   '#00C896',
+    Released: '#0984E3',
+    Pending:  '#F59E0B',
+    Dispute:  '#EF4444',
+    Ready:    '#A142F4',
+    Revision: '#F97316',
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
@@ -78,10 +83,12 @@ export default function ClientProjectView({ project: initialProject, allProjects
   const portalToken = searchParams.get('token') ?? '';
   const [p, setP] = useState(initialProject);
   const tab = searchParams.get('view') === 'shared' ? 'shared' : 'overview';
-  const isPending  = p.status === 'Pending';
-  const isDispute  = p.status === 'Dispute';
-  const isFinished = p.status === 'Released';
-  const isFunded   = p.status === 'Funded';
+  const isPending   = p.status === 'Pending';
+  const isDispute   = p.status === 'Dispute';
+  const isFinished  = p.status === 'Released';
+  const isFunded    = p.status === 'Funded';
+  const isReady     = p.status === 'Ready';
+  const isRevision  = p.status === 'Revision';
 
   // Pay / Fund state
   const [paying, setPaying] = useState(false);
@@ -183,7 +190,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
             </div>
             <div>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 2 }}>{p.description}</div>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 2 }}>{getDeliverables(p.description)}</div>
             </div>
           </div>
 
@@ -225,7 +232,7 @@ export default function ClientProjectView({ project: initialProject, allProjects
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
             {[
-              { label: 'Status',   val: p.status,                color: p.status === 'Dispute' ? '#EF4444' : p.status === 'Released' ? '#0984E3' : p.status === 'Funded' ? '#00C896' : '#F59E0B' },
+              { label: 'Status',   val: p.status,                color: p.status === 'Dispute' ? '#EF4444' : p.status === 'Released' ? '#0984E3' : p.status === 'Funded' ? '#00C896' : p.status === 'Ready' ? '#A142F4' : p.status === 'Revision' ? '#F97316' : '#F59E0B' },
               { label: 'Amount',   val: fmt(p.amount),           color: 'var(--text-primary)' },
               { label: 'Start',    val: p.start_date || '—',     color: 'var(--text-secondary)' },
               { label: 'Deadline', val: p.expected_date || '—',  color: 'var(--text-secondary)' },
@@ -314,8 +321,25 @@ export default function ClientProjectView({ project: initialProject, allProjects
         </div>
       )}
 
-      {/* Escrow Action Panel — only shown while Funded */}
-      {isFunded && !approved && (
+      {/* Revision notice */}
+      {isRevision && (
+        <div className="card" style={{ padding: 24, marginBottom: 20, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(249,115,22,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#F97316' }}>Revision in progress</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>Your change request has been received. The provider is working on a new version. You will be notified when the updated preview is ready.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Escrow Action Panel — only shown while Funded or Ready */}
+      {(isFunded || isReady) && !approved && (
         <div className="card" style={{ padding: 28, marginBottom: 20, border: '1px solid rgba(0,200,150,0.25)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(0,200,150,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -672,7 +696,7 @@ function ClientFilesSection({ files }: { files: { id: string; name: string; date
 // ── Shared with me ──────────────────────────────────────────────────────────
 function SharedWithMeSection({ projects, currentId }: { projects: ClientProjectSummary[]; currentId: string }) {
   const statusColor: Record<string, string> = {
-    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444',
+    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316',
   };
 
   if (projects.length === 0) {

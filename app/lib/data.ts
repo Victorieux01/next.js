@@ -31,7 +31,6 @@ export async function fetchLatestInvoices(userId: string) {
     if (error) throw error;
 
     return (data ?? []).map((inv) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = inv.customers as any;
       return {
         id: inv.id,
@@ -88,7 +87,6 @@ export async function fetchFilteredInvoices(query: string, currentPage: number, 
 
     const q = query.toLowerCase();
     const filtered = (data ?? []).filter((inv) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = inv.customers as any;
       return (
         !q ||
@@ -102,7 +100,6 @@ export async function fetchFilteredInvoices(query: string, currentPage: number, 
 
     const offset = (currentPage - 1) * ITEMS_PER_PAGE;
     return filtered.slice(offset, offset + ITEMS_PER_PAGE).map((inv) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = inv.customers as any;
       return {
         id: inv.id,
@@ -131,7 +128,6 @@ export async function fetchInvoicesPages(query: string, userId: string) {
 
     const q = query.toLowerCase();
     const filtered = (data ?? []).filter((inv) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = inv.customers as any;
       return (
         !q ||
@@ -196,7 +192,6 @@ export async function fetchFilteredCustomers(query: string, userId: string) {
     if (error) throw error;
 
     return (data ?? []).map((customer) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const invoices = (customer.invoices as any[]) ?? [];
       const total_pending = invoices
         .filter((i) => i.status === 'pending')
@@ -212,7 +207,6 @@ export async function fetchFilteredCustomers(query: string, userId: string) {
         total_invoices: invoices.length,
         total_pending: formatCurrency(total_pending),
         total_paid: formatCurrency(total_paid),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any as CustomersTableType;
     });
   } catch (err) {

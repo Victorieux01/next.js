@@ -12,34 +12,59 @@ const stripePromise = loadStripe(
 
 const PLANS = [
   {
-    name: 'Free',
-    price: '$0 CAD',
-    period: '/month',
+    name: 'Starter',
+    price: '5%',
+    period: 'per project',
     priceId: process.env.NEXT_PUBLIC_STRIPE_FREE_PRICE_ID!,
-    features: ['Basic dashboard', 'Up to 5 invoices', 'Email support'],
+    features: [
+      'Min. project: $50 CAD',
+      '25 GB storage included',
+      'Files retained 14 days after release',
+      'Single payment per project',
+      'Access: everyone',
+      'Auto-release: 7 days',
+    ],
     color: 'border-gray-200',
     buttonColor: 'bg-gray-500 hover:bg-gray-400',
     badge: null,
+    isFree: true,
   },
   {
     name: 'Pro',
-    price: '$10 CAD',
-    period: '/month',
+    price: '2.5%',
+    period: 'per project',
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID!,
-    features: ['Everything in Free', 'Unlimited invoices', 'Priority support'],
+    features: [
+      'Min. project: $200 CAD',
+      '100 GB storage included',
+      'Files retained 30 days after release',
+      'Up to 3 milestones ($200 min each)',
+      'Access: registered business (TVQ / TPS-TVH)',
+      'Auto-release: 14 days',
+    ],
     color: 'border-blue-500',
     buttonColor: 'bg-blue-500 hover:bg-blue-400',
     badge: 'Most Popular',
+    isFree: false,
   },
   {
     name: 'Studio',
-    price: '$29 CAD',
-    period: '/month',
+    price: '1%',
+    period: 'per project',
     priceId: process.env.NEXT_PUBLIC_STRIPE_STUDIO_PRICE_ID!,
-    features: ['Everything in Pro', 'Team access', 'Custom branding', 'API access'],
+    features: [
+      'Min. project: $1 000 CAD',
+      '200 GB storage included',
+      'Files retained 60 days after release',
+      '3–5 milestones ($1 000 min each)',
+      'Access: by invitation or $100k+ volume',
+      'Auto-release: 14 days',
+      'Rate negotiable down to ~0.75%',
+    ],
     color: 'border-purple-500',
     buttonColor: 'bg-purple-500 hover:bg-purple-400',
     badge: 'Best Value',
+    isFree: false,
   },
 ];
 
@@ -57,7 +82,7 @@ export default function SubscriptionModal({
   const [loading, setLoading] = useState(false);
 
   const handleSelectPlan = async (plan: typeof PLANS[0]) => {
-    if (plan.name === 'Free') {
+    if (plan.isFree) {
       onClose();
       return;
     }
@@ -136,6 +161,7 @@ export default function SubscriptionModal({
                     </span>
                     <span className="mb-1 text-gray-500">{plan.period}</span>
                   </div>
+                  <p className="text-xs text-gray-400 mt-1">Platform fee on escrow amount</p>
                   <ul className="my-6 flex-1 space-y-2">
                     {plan.features.map((feature) => (
                       <li
@@ -151,7 +177,7 @@ export default function SubscriptionModal({
                     onClick={() => handleSelectPlan(plan)}
                     className={`${plan.buttonColor} w-full rounded-lg py-2 text-sm font-medium text-white transition-colors`}
                   >
-                    {plan.name === 'Free' ? 'Get Started Free' : `Choose ${plan.name}`}
+                    {plan.isFree ? 'Get Started Free' : `Choose ${plan.name}`}
                   </button>
                 </div>
               ))}
@@ -159,7 +185,7 @@ export default function SubscriptionModal({
 
             <p className="mt-6 text-center text-sm text-gray-400">
               <button onClick={onClose} className="hover:underline">
-                Skip for now, I'll decide later
+                Skip for now, I&apos;ll decide later
               </button>
             </p>
           </>

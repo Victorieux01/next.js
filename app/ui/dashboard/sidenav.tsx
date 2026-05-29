@@ -103,12 +103,7 @@ export default function SideNav({ user }: { user: { name: string; email: string 
     return () => clearInterval(interval);
   }, []);
 
-  // Clear badge immediately when user navigates to shared
-  useEffect(() => {
-    if (pathname.startsWith('/dashboard/shared')) {
-      setSharedBadge(0);
-    }
-  }, [pathname]);
+  const displayBadge = pathname.startsWith('/dashboard/shared') ? 0 : sharedBadge;
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -156,7 +151,7 @@ export default function SideNav({ user }: { user: { name: string; email: string 
           >
             {item.icon}
             <span className="nb-label">{item.label}</span>
-            {item.page === 'shared' && sharedBadge > 0 && (
+            {item.page === 'shared' && displayBadge > 0 && (
               <span style={{
                 marginLeft: 'auto',
                 minWidth: 18, height: 18,
@@ -171,7 +166,7 @@ export default function SideNav({ user }: { user: { name: string; email: string 
                 padding: '0 5px',
                 lineHeight: 1,
               }}>
-                {sharedBadge}
+                {displayBadge}
               </span>
             )}
           </Link>

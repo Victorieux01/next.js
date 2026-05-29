@@ -21,7 +21,7 @@ function parseReason(raw: string): { original: string } {
 
 function Badge({ status }: { status: string }) {
   const dotColors: Record<string, string> = {
-    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444',
+    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316',
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
@@ -934,7 +934,7 @@ export default function DashboardHome({ projects, user }: Props) {
                   <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                 </div>
                 <select className="fsel" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }}>
-                  {['All','Funded','Released','Pending','Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
+                  {['All','Funded','Ready','Revision','Released','Pending','Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>

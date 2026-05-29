@@ -364,12 +364,15 @@ export async function clientRequestChanges(
     if (fetchErr || !project) return { success: false, error: 'Project not found.' };
     if (project.status === 'Released') return { success: false, error: 'Project is already completed.' };
 
-    // Add revision entry so it appears in the timeline
-    await supabase.from('coredon_project_revisions').insert({
-      project_id: projectId,
-      date,
-      note: `[Client] ${reason}`,
-    });
+    // Add revision entry and set project status to Revision
+    await Promise.all([
+      supabase.from('coredon_project_revisions').insert({
+        project_id: projectId,
+        date,
+        note: `[Client] ${reason}`,
+      }),
+      supabase.from('coredon_projects').update({ status: 'Revision' }).eq('id', projectId),
+    ]);
 
     revalidatePath(`/client/${projectId}`);
     revalidatePath(`/dashboard/projects/${projectId}`);
@@ -409,12 +412,13 @@ export async function sendMessageAsProvider(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { name } = await getUserSession();
-    await supabase.from('coredon_project_messages').insert({
+    const { error } = await supabase.from('coredon_project_messages').insert({
       project_id:  projectId,
       sender:      'provider',
       sender_name: name,
       content,
     });
+    if (error) throw new Error(error.message);
     revalidatePath(`/dashboard/projects/${projectId}`);
     revalidatePath(`/client/${projectId}`);
     return { success: true };
@@ -431,12 +435,13 @@ export async function sendMessageAsClient(
   content: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await supabase.from('coredon_project_messages').insert({
+    const { error } = await supabase.from('coredon_project_messages').insert({
       project_id:  projectId,
       sender:      'client',
       sender_name: senderName,
       content,
     });
+    if (error) throw new Error(error.message);
     revalidatePath(`/client/${projectId}`);
     revalidatePath(`/dashboard/projects/${projectId}`);
     return { success: true };
@@ -480,6 +485,35 @@ export async function sendPreviewNotification(
   } catch (err) {
     console.error('sendPreviewNotification error:', err);
     return { success: false, error: 'Failed to send preview email.' };
+  }
+}
+
+// ── Rushes ────────────────────────────────────────────────────────────────────
+
+// Record a rush upload (raw footage — no FFmpeg processing)
+export async function addRush(
+  projectId: string,
+  name: string,
+  fileSizeMb: number,
+  note?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await getUserId(); // ensure authenticated
+    const date = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase.from('coredon_project_rushes').insert({
+      project_id:    projectId,
+      name,
+      date,
+      file_count:    1,
+      total_size_mb: fileSizeMb,
+      note:          note || null,
+    });
+    if (error) throw new Error(error.message);
+    revalidatePath(`/dashboard/projects/${projectId}`);
+    return { success: true };
+  } catch (err) {
+    console.error('addRush error:', err);
+    return { success: false, error: 'Failed to record rush.' };
   }
 }
 

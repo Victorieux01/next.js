@@ -1,5 +1,5 @@
 import supabase from './supabase';
-import { Project, CoredonClient } from './coredon-types';
+import { Project, CoredonClient, ProjectRush } from './coredon-types';
 
 function toStr(v: unknown): string {
   if (!v) return '';
@@ -7,9 +7,8 @@ function toStr(v: unknown): string {
   return String(v);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function serializeProject(row: any, related: {
-  revisions: any[]; versions: any[]; files: any[]; disputes: any[]; messages: any[];
+  revisions: any[]; versions: any[]; files: any[]; disputes: any[]; messages: any[]; rushes: any[];
 }): Project {
   return {
     ...row,
@@ -30,10 +29,10 @@ function serializeProject(row: any, related: {
     })),
     disputes: related.disputes,
     messages: related.messages.map((m: any) => ({ ...m, created_at: toStr(m.created_at) })),
+    rushes: related.rushes.map((r: any) => ({ ...r, date: toStr(r.date) })),
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function serializeClient(row: any): CoredonClient {
   return {
     ...row,
@@ -48,6 +47,21 @@ async function fetchMessages(projectIds: string[]): Promise<any[]> {
   try {
     const { data } = await supabase
       .from('coredon_project_messages')
+      .select('*')
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: true });
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Fetch rushes separately — gracefully returns [] if the table doesn't exist yet
+async function fetchRushes(projectIds: string[]): Promise<any[]> {
+  if (projectIds.length === 0) return [];
+  try {
+    const { data } = await supabase
+      .from('coredon_project_rushes')
       .select('*')
       .in('project_id', projectIds)
       .order('created_at', { ascending: true });
@@ -77,7 +91,7 @@ async function _fetchAllProjects(userId: string): Promise<Project[]> {
 
     const rows = data ?? [];
     const ids = rows.map((p: any) => p.id as string);
-    const messages = await fetchMessages(ids);
+    const [messages, rushes] = await Promise.all([fetchMessages(ids), fetchRushes(ids)]);
 
     return rows.map((p: any) =>
       serializeProject(p, {
@@ -86,6 +100,7 @@ async function _fetchAllProjects(userId: string): Promise<Project[]> {
         files:     p.coredon_project_files      ?? [],
         disputes:  p.coredon_project_disputes   ?? [],
         messages:  messages.filter((m: any) => m.project_id === p.id),
+        rushes:    rushes.filter((r: any) => r.project_id === p.id),
       })
     );
   } catch (error) {
@@ -140,7 +155,7 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
-    const messages = await fetchMessages([id]);
+    const [messages, rushes] = await Promise.all([fetchMessages([id]), fetchRushes([id])]);
 
     return serializeProject(data, {
       revisions: data.coredon_project_revisions ?? [],
@@ -148,6 +163,7 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
       files:     data.coredon_project_files      ?? [],
       disputes:  data.coredon_project_disputes   ?? [],
       messages,
+      rushes,
     });
   } catch (error) {
     console.error('fetchProjectById error:', error instanceof Error ? error.message : JSON.stringify(error));
@@ -166,7 +182,7 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
     if (error) throw new Error(error.message || JSON.stringify(error));
     if (!data) return null;
 
-    const messages = await fetchMessages([id]);
+    const [messages, rushes] = await Promise.all([fetchMessages([id]), fetchRushes([id])]);
 
     return serializeProject(data, {
       revisions: data.coredon_project_revisions ?? [],
@@ -174,6 +190,7 @@ export async function fetchProjectByIdPublic(id: string): Promise<Project | null
       files:     data.coredon_project_files      ?? [],
       disputes:  data.coredon_project_disputes   ?? [],
       messages,
+      rushes,
     });
   } catch (error) {
     console.error('fetchProjectByIdPublic error:', error instanceof Error ? error.message : JSON.stringify(error));

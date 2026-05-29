@@ -23,15 +23,21 @@ export default function ChatSection({ projectId, messages: initialMessages, side
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (replaceAll = false) => {
     try {
       const url = token
         ? `/api/project-messages/${projectId}?token=${encodeURIComponent(token)}`
         : `/api/project-messages/${projectId}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(data.messages ?? []);
+      const fresh: ProjectMessage[] = data.messages ?? [];
+      setMessages(prev => {
+        if (replaceAll) return fresh;
+        // During background poll: preserve optimistic messages still in-flight
+        const optimistics = prev.filter(m => m.id.startsWith('tmp-'));
+        return optimistics.length > 0 ? [...fresh, ...optimistics] : fresh;
+      });
     } catch { /* ignore */ }
   }, [projectId, token]);
 
@@ -61,7 +67,6 @@ export default function ChatSection({ projectId, messages: initialMessages, side
     };
   }, [fetchMessages]);
 
-  useEffect(() => { setMessages(initialMessages); }, [initialMessages]);
 
   const sorted = [...messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -103,7 +108,7 @@ export default function ChatSection({ projectId, messages: initialMessages, side
         ? await sendMessageAsProvider(projectId, text)
         : await sendMessageAsClient(projectId, senderName, text);
       if (res.success) {
-        await fetchMessages(); // replace optimistic with real DB row
+        await fetchMessages(true); // replaceAll: swap optimistic for the real DB row
         inputRef.current?.focus();
       } else {
         // Roll back the optimistic message and restore the input
@@ -290,7 +295,9 @@ export default function ChatSection({ projectId, messages: initialMessages, side
       </div>
 
       {error && (
-        <div style={{ padding: '0 16px 10px', fontSize: 12, color: '#EF4444' }}>{error}</div>
+        <div style={{ padding: '8px 14px 10px', margin: '0 14px 10px', fontSize: 12, color: '#EF4444', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8 }}>
+          {error}
+        </div>
       )}
     </div>
   );

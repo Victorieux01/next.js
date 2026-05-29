@@ -19,7 +19,6 @@ export async function GET(
   } else {
     const session = await auth();
     if (session?.user?.id) {
-      // Allow if the user is the provider who owns the project
       const { data: asProvider } = await supabase
         .from('coredon_projects')
         .select('id')
@@ -30,7 +29,6 @@ export async function GET(
       if (asProvider) {
         authorized = true;
       } else if (session.user.email) {
-        // Allow if the logged-in user is the client on this project
         const { data: asClient } = await supabase
           .from('coredon_projects')
           .select('id')
@@ -53,8 +51,13 @@ export async function GET(
     .order('created_at', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Table not ready yet — return empty rather than erroring the poll
+    return NextResponse.json({ messages: [] }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   }
 
-  return NextResponse.json({ messages: data ?? [] });
+  return NextResponse.json({ messages: data ?? [] }, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }

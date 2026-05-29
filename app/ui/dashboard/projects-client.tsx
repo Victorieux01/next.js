@@ -1,14 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project } from '@/app/lib/coredon-types';
+import { Project, getDeliverables } from '@/app/lib/coredon-types';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
 }
 
 function Badge({ status }: { status: string }) {
-  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444' };
+  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316' };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColors[status] || '#94A3B8', display: 'inline-block' }} />
@@ -30,33 +30,29 @@ function Avatar({ project }: { project: Project }) {
 
 interface Props { projects: Project[] }
 
-const SORT_ORDER: Record<string, number> = { Dispute: 0, Funded: 1, Pending: 2, Released: 3 };
+const SORT_ORDER: Record<string, number> = { Dispute: 0, Funded: 1, Ready: 2, Revision: 3, Pending: 4, Released: 5 };
 
 export default function ProjectsClient({ projects: initialProjects }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
-  const [pending, setPending] = useState<Project | null>(null);
+  const [pending] = useState<Project | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = sessionStorage.getItem('pendingProject');
+    if (!raw) return null;
+    try {
+      const project = JSON.parse(raw) as Project;
+      sessionStorage.removeItem('pendingProject');
+      return project;
+    } catch { return null; }
+  });
   const PER_PAGE = 8;
 
-  useEffect(() => {
-    const raw = sessionStorage.getItem('pendingProject');
-    if (!raw) return;
-    try {
-      setPending(JSON.parse(raw) as Project);
-      sessionStorage.removeItem('pendingProject');
-    } catch {}
-  }, []);
+  const effectivePending = pending && initialProjects.some(p => p.id === pending.id) ? null : pending;
 
-  useEffect(() => {
-    if (pending && initialProjects.some(p => p.id === pending.id)) {
-      setPending(null);
-    }
-  }, [initialProjects, pending]);
-
-  const projects = pending
-    ? [pending, ...initialProjects.filter(p => p.id !== pending.id)]
+  const projects = effectivePending
+    ? [effectivePending, ...initialProjects.filter(p => p.id !== effectivePending.id)]
     : initialProjects;
 
   const sorted = [...projects].sort((a, b) => {
@@ -112,7 +108,7 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
               <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <select className="fsel" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }}>
-              {['All', 'Funded', 'Released', 'Pending', 'Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
+              {['All', 'Funded', 'Ready', 'Revision', 'Released', 'Pending', 'Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>
@@ -136,7 +132,7 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
                 {p.description && (
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.description}
+                    {getDeliverables(p.description)}
                   </div>
                 )}
               </div>

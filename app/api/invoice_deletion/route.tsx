@@ -25,7 +25,6 @@ export async function GET(req: Request) {
       );
     } else {
       // Remove pending status
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase.from('invoices') as any)
         .update({ status: 'pending' })
         .eq('id', invoiceId)

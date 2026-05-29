@@ -7,7 +7,7 @@ function fmt(n: number): string {
 }
 
 function Badge({ status }: { status: string }) {
-  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444' };
+  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316' };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColors[status] || '#94A3B8', display: 'inline-block' }} />
@@ -38,7 +38,7 @@ export default function SharedClient({ projects }: Props) {
 
   useEffect(() => {
     localStorage.setItem('sharedSeenIds', JSON.stringify(projects.map(p => p.id)));
-  }, [projects.length]);
+  }, [projects]);
   const PER_PAGE = 10;
 
   const filtered = projects.filter(p =>

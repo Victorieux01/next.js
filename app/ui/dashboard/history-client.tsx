@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project } from '@/app/lib/coredon-types';
+import { Project, getDeliverables } from '@/app/lib/coredon-types';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -50,7 +50,7 @@ export default function HistoryClient({ projects }: Props) {
               <div style={{ width: 34, height: 34, borderRadius: 10, background: p.color + '22', color: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
               <span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span>
             </div>
-            <div className="hide-m" style={{ flex: 2, fontSize: 13, color: 'var(--text-secondary)' }}>{p.description}</div>
+            <div className="hide-m" style={{ flex: 2, fontSize: 13, color: 'var(--text-secondary)' }}>{getDeliverables(p.description)}</div>
             <div style={{ flex: 1, textAlign: 'right', fontWeight: 600, fontSize: 14 }}>{fmt(p.amount)}</div>
             <div style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>{p.released_date || '—'}</div>
           </div>

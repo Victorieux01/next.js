@@ -30,6 +30,8 @@ export async function GET() {
         prepaid_date  DATE,
         prepaid_method TEXT,
         released_date DATE,
+        payment_type       TEXT    DEFAULT 'one_time',
+        installment_months INTEGER DEFAULT 1,
         description   TEXT,
         pinned        BOOLEAN DEFAULT false,
         created_at    TIMESTAMPTZ DEFAULT now()
@@ -76,6 +78,60 @@ export async function GET() {
     `;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS coredon_project_messages (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id  UUID        NOT NULL REFERENCES coredon_projects(id) ON DELETE CASCADE,
+        sender      TEXT        NOT NULL CHECK (sender IN ('client', 'provider')),
+        sender_name TEXT        NOT NULL,
+        content     TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now() NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_coredon_project_messages_project_id
+      ON coredon_project_messages (project_id, created_at)
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS coredon_project_rushes (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id    UUID REFERENCES coredon_projects(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        date          DATE,
+        file_count    INTEGER DEFAULT 1,
+        total_size_mb NUMERIC,
+        note          TEXT,
+        url           TEXT,
+        created_at    TIMESTAMPTZ DEFAULT now()
+      )
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_coredon_project_rushes_project_id
+      ON coredon_project_rushes (project_id)
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS coredon_storage_packs (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID REFERENCES coredon_projects(id) ON DELETE CASCADE,
+        size       TEXT NOT NULL CHECK (size IN ('S','M','L','XL')),
+        storage_gb INTEGER NOT NULL,
+        price_cad  NUMERIC NOT NULL,
+        purchased_at TIMESTAMPTZ DEFAULT now()
+      )
+    `;
+
+    // Tell PostgREST to reload its schema cache so the new table is immediately available
+    await sql`SELECT pg_notify('pgrst', 'reload schema')`;
+
+    // Add columns if they don't exist yet (safe migrations for existing databases)
+    await sql`ALTER TABLE coredon_projects ADD COLUMN IF NOT EXISTS payment_type TEXT DEFAULT 'one_time'`;
+    await sql`ALTER TABLE coredon_projects ADD COLUMN IF NOT EXISTS installment_months INTEGER DEFAULT 1`;
+    await sql`ALTER TABLE coredon_projects ADD COLUMN IF NOT EXISTS approved_date DATE`;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS coredon_clients (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company TEXT NOT NULL,
@@ -115,7 +171,7 @@ export async function GET() {
       const p4 = await sql`INSERT INTO coredon_projects (name, email, status, amount, initials, color, start_date, end_date, expected_date, prepaid_date, prepaid_method, released_date, completion_date, description) VALUES ('Solène Marchand', 'solene@marchand.com', 'Released', 950, 'SM', '#F9AB00', '2025-01-05', '2025-02-28', '2025-02-20', '2025-01-05', 'Stripe Connect', '2025-02-28', '2025-02-27', 'Wedding Highlights Edit') RETURNING id`;
       const p5 = await sql`INSERT INTO coredon_projects (name, email, status, amount, initials, color, start_date, end_date, expected_date, prepaid_date, prepaid_method, description) VALUES ('Blackline Records', 'finance@blackline.com', 'Dispute', 2100, 'BR', '#EA4335', '2025-01-20', '2025-03-05', '2025-02-25', '2025-01-20', 'Credit Card (Stripe)', 'Artist Documentary Teaser') RETURNING id`;
       const p6 = await sql`INSERT INTO coredon_projects (name, email, status, amount, initials, color, start_date, end_date, expected_date, prepaid_date, prepaid_method, description) VALUES ('Lumière Films', 'prod@lumierefilms.ca', 'Funded', 4500, 'LF', '#A142F4', '2025-02-15', '2025-04-10', '2025-03-30', '2025-02-15', 'Stripe Connect', 'Short Film Post-Production') RETURNING id`;
-      const p7 = await sql`INSERT INTO coredon_projects (name, email, status, amount, initials, color, start_date, end_date, expected_date, prepaid_date, prepaid_method, released_date, completion_date, description) VALUES ('Pixel & Frame', 'hello@pixelframe.co', 'Released', 1200, 'PF', '#24C1E0', '2024-11-01', '2024-12-20', '2024-12-05', '2024-11-01', 'Stripe Connect', '2024-12-20', '2024-12-18', 'Brand Identity Video') RETURNING id`;
+      const p7 = await sql`INSERT INTO coredon_projects (name, email, status, amount, initials, color, start_date, end_date, expected_date, prepaid_date, prepaid_method, released_date, completion_date, payment_type, installment_months, description) VALUES ('Pixel & Frame', 'hello@pixelframe.co', 'Released', 1200, 'PF', '#24C1E0', '2024-10-01', '2024-12-20', '2024-12-05', '2024-10-01', 'Stripe Connect', '2024-12-20', '2024-12-18', 'installments', 3, 'Brand Identity Video') RETURNING id`;
 
       // Suppress unused variable warnings
       void p2; void p3; void p6;
