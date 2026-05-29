@@ -43,25 +43,37 @@ function Avatar({ project }: { project: Project }) {
 function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Build earnData the same way as the earnings tab
   const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const byKey: Record<string, { month: string; year: string; v: number }> = {};
+
+  // Released earnings by month (blue line)
+  const byKeyReleased: Record<string, { month: string; year: string; v: number }> = {};
   projects.filter(p => p.status === 'Released').forEach(p => {
     const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
     const d = new Date(dateStr);
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    if (!byKey[key]) byKey[key] = { month: moNames[d.getMonth()], year: String(d.getFullYear()), v: 0 };
-    byKey[key].v += p.amount;
+    if (!byKeyReleased[key]) byKeyReleased[key] = { month: moNames[d.getMonth()], year: String(d.getFullYear()), v: 0 };
+    byKeyReleased[key].v += p.amount;
   });
-  const earnData = Object.keys(byKey).sort().map(k => ({ key: k, ...byKey[k] }));
+  const earnData = Object.keys(byKeyReleased).sort().map(k => ({ key: k, ...byKeyReleased[k] }));
+
+  // Funded (escrow received) events — all projects with a prepaid_date (any status)
+  const fundedEvents: { date: Date; amount: number; cum: number }[] = [];
+  {
+    const raw: { date: Date; amount: number }[] = [];
+    projects.filter(p => p.prepaid_date).forEach(p => raw.push({ date: new Date(p.prepaid_date!), amount: p.amount }));
+    raw.sort((a, b) => a.date.getTime() - b.date.getTime());
+    let cum = 0;
+    raw.forEach(r => { cum += r.amount; fundedEvents.push({ ...r, cum }); });
+  }
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     el.innerHTML = '';
 
-    // Cumulative daily points across all months using smoothstep
     function smoothstep(t: number) { return t * t * (3 - 2 * t); }
+
+    // Released earnings: smooth bezier daily points
     const dailyPts: { month: string; year: string; dayOfMonth: number; v: number }[] = [];
     let cumTotal = 0;
     earnData.forEach(mo => {
@@ -73,6 +85,7 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
       cumTotal += mo.v;
     });
     const grandTotal = cumTotal;
+    const grandFunded = fundedEvents.length > 0 ? fundedEvents[fundedEvents.length - 1].cum : 0;
 
     // Header
     const hdr = document.createElement('div');
@@ -88,7 +101,10 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     hdr.appendChild(lbl); hdr.appendChild(amtEl); hdr.appendChild(dateEl);
     el.appendChild(hdr);
 
-    if (dailyPts.length === 0 || grandTotal === 0) {
+    const hasData = dailyPts.length > 0 && grandTotal > 0;
+    const hasFunded = fundedEvents.length > 0;
+
+    if (!hasData && !hasFunded) {
       const empty = document.createElement('div');
       empty.style.cssText = 'padding:24px;text-align:center;font-size:12px;color:#94A3B8;';
       empty.textContent = 'No earnings yet';
@@ -105,96 +121,175 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     svg.style.cssText = 'display:block;width:100%;';
 
     const defs = document.createElementNS(ns, 'defs');
+
+    // Blue gradient (Released)
     const grad = document.createElementNS(ns, 'linearGradient');
     grad.setAttribute('id', 'dash_earn_grad');
     grad.setAttribute('x1','0'); grad.setAttribute('y1','0'); grad.setAttribute('x2','0'); grad.setAttribute('y2','1');
     const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#0984E3'); s1.setAttribute('stop-opacity','0.15');
     const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','transparent'); s2.setAttribute('stop-opacity','0');
-    grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
+    grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
 
-    const maxV = grandTotal || 1;
-    const ePts = dailyPts.map((_, i) => [
-      PAD + i / (dailyPts.length - 1) * (W - PAD * 2),
-      TOP + cH * (1 - dailyPts[i].v / maxV),
-    ]);
+    // Amber gradient (Funded)
+    const gradF = document.createElementNS(ns, 'linearGradient');
+    gradF.setAttribute('id', 'dash_fund_grad');
+    gradF.setAttribute('x1','0'); gradF.setAttribute('y1','0'); gradF.setAttribute('x2','0'); gradF.setAttribute('y2','1');
+    const sf1 = document.createElementNS(ns,'stop'); sf1.setAttribute('offset','0%'); sf1.setAttribute('stop-color','#F9AB00'); sf1.setAttribute('stop-opacity','0.12');
+    const sf2 = document.createElementNS(ns,'stop'); sf2.setAttribute('offset','100%'); sf2.setAttribute('stop-color','transparent'); sf2.setAttribute('stop-opacity','0');
+    gradF.appendChild(sf1); gradF.appendChild(sf2); defs.appendChild(gradF);
+    svg.appendChild(defs);
 
-    function bez(ps: number[][]): string {
-      if (ps.length < 2) return '';
-      let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
-      for (let i = 0; i < ps.length - 1; i++) {
-        const dx = ps[i+1][0] - ps[i][0], t = 0.45;
-        const cp1x = ps[i][0] + dx*t, cp1y = ps[i][1];
-        const cp2x = ps[i+1][0] - dx*t, cp2y = ps[i+1][1];
-        path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
-      }
-      return path;
+    // Time range: span both funded events and daily earned points
+    const maxV = Math.max(grandTotal, grandFunded, 1);
+    const valToY = (v: number) => TOP + cH * (1 - v / maxV);
+    const botY = H - BOT;
+
+    // ── Funded step line (amber, dashed) ──
+    if (hasFunded) {
+      const allTimes = fundedEvents.map(e => e.date.getTime());
+      const t0f = Math.min(...allTimes), t1f = Math.max(...allTimes);
+      const tRangeF = Math.max(t1f - t0f, 1);
+      // Map funded event dates into SVG x using same time domain as the released line
+      const allTimesAll = [
+        ...fundedEvents.map(e => e.date.getTime()),
+        ...earnData.map(mo => new Date(mo.key + '-01').getTime()),
+      ];
+      const t0 = Math.min(...allTimesAll), t1 = Math.max(...allTimesAll);
+      const tRange = Math.max(t1 - t0, 1);
+      const dateToX = (d: Date) => PAD + (d.getTime() - t0) / tRange * (W - 2 * PAD);
+
+      let fundPath = `M${PAD.toFixed(1)},${valToY(0).toFixed(1)}`;
+      fundedEvents.forEach(evt => {
+        fundPath += ` H${dateToX(evt.date).toFixed(1)} V${valToY(evt.cum).toFixed(1)}`;
+      });
+      fundPath += ` H${(W - PAD).toFixed(1)}`;
+
+      const fundArea = document.createElementNS(ns,'path');
+      fundArea.setAttribute('d', fundPath + ` V${botY} H${PAD.toFixed(1)} Z`);
+      fundArea.setAttribute('fill','url(#dash_fund_grad)');
+      svg.appendChild(fundArea);
+
+      const fundLine = document.createElementNS(ns,'path');
+      fundLine.setAttribute('d', fundPath); fundLine.setAttribute('fill','none');
+      fundLine.setAttribute('stroke','#F9AB00'); fundLine.setAttribute('stroke-width','1.5');
+      fundLine.setAttribute('stroke-dasharray','5 3'); fundLine.setAttribute('stroke-linecap','square');
+      svg.appendChild(fundLine);
+
+      // Dots at each funded event
+      fundedEvents.forEach(evt => {
+        const mk = document.createElementNS(ns,'circle');
+        mk.setAttribute('cx', dateToX(evt.date).toFixed(1));
+        mk.setAttribute('cy', valToY(evt.cum).toFixed(1));
+        mk.setAttribute('r', '3');
+        mk.setAttribute('fill','#F9AB00'); mk.setAttribute('stroke','#fff'); mk.setAttribute('stroke-width','1.5');
+        svg.appendChild(mk);
+      });
     }
 
-    const linePath = bez(ePts);
-    const areaPath = linePath + ` L${ePts[ePts.length-1][0].toFixed(1)},${H-BOT} L${ePts[0][0].toFixed(1)},${H-BOT} Z`;
+    // ── Released bezier line (blue) ──
+    if (hasData) {
+      const ePts = dailyPts.map((_, i) => [
+        PAD + i / (dailyPts.length - 1) * (W - PAD * 2),
+        valToY(dailyPts[i].v),
+      ]);
 
-    const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#dash_earn_grad)');
-    svg.appendChild(area);
-    const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
-    line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
-    svg.appendChild(line);
+      function bez(ps: number[][]): string {
+        if (ps.length < 2) return '';
+        let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
+        for (let i = 0; i < ps.length - 1; i++) {
+          const dx = ps[i+1][0] - ps[i][0], t = 0.45;
+          const cp1x = ps[i][0] + dx*t, cp1y = ps[i][1];
+          const cp2x = ps[i+1][0] - dx*t, cp2y = ps[i+1][1];
+          path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
+        }
+        return path;
+      }
 
-    // Month labels
-    if (earnData.length > 1) {
-      earnData.forEach((mo, m) => {
-        const x = PAD + m / (earnData.length - 1) * (W - PAD * 2);
+      const linePath = bez(ePts);
+      const areaPath = linePath + ` L${ePts[ePts.length-1][0].toFixed(1)},${botY} L${ePts[0][0].toFixed(1)},${botY} Z`;
+      const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#dash_earn_grad)');
+      svg.appendChild(area);
+      const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
+      line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
+      svg.appendChild(line);
+
+      // Month labels
+      if (earnData.length > 1) {
+        earnData.forEach((mo, m) => {
+          const x = PAD + m / (earnData.length - 1) * (W - PAD * 2);
+          const lbl2 = document.createElementNS(ns,'text');
+          lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 6));
+          lbl2.setAttribute('text-anchor', m === 0 ? 'start' : m === earnData.length - 1 ? 'end' : 'middle');
+          lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
+          lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
+          lbl2.textContent = mo.month;
+          svg.appendChild(lbl2);
+        });
+      } else if (earnData.length === 1) {
         const lbl2 = document.createElementNS(ns,'text');
-        lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 6));
-        lbl2.setAttribute('text-anchor', m === 0 ? 'start' : m === earnData.length - 1 ? 'end' : 'middle');
+        lbl2.setAttribute('x', String(W / 2)); lbl2.setAttribute('y', String(H - 6));
+        lbl2.setAttribute('text-anchor','middle');
         lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
         lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-        lbl2.textContent = mo.month;
+        lbl2.textContent = earnData[0].month + ' ' + earnData[0].year;
         svg.appendChild(lbl2);
+      }
+
+      // Hover tracker (follows released line)
+      const DOT_R = 3;
+      const vl = document.createElementNS(ns,'line');
+      vl.setAttribute('stroke','#0984E3'); vl.setAttribute('stroke-width','1'); vl.setAttribute('stroke-dasharray','3 2'); vl.style.display='none';
+      svg.appendChild(vl);
+      const dot = document.createElementNS(ns,'circle'); dot.setAttribute('r', String(DOT_R));
+      dot.setAttribute('fill','#fff'); dot.setAttribute('stroke','#0984E3'); dot.setAttribute('stroke-width','2'); dot.style.display='none';
+      svg.appendChild(dot);
+      const ov = document.createElementNS(ns,'rect');
+      ov.setAttribute('x','0'); ov.setAttribute('y','0'); ov.setAttribute('width',String(W)); ov.setAttribute('height',String(H-BOT));
+      ov.setAttribute('fill','transparent'); ov.style.cursor='crosshair';
+      svg.appendChild(ov);
+
+      ov.addEventListener('mousemove', (e) => {
+        const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+        const ctm = svg.getScreenCTM(); if (!ctm) return;
+        const mx = pt.matrixTransform(ctm.inverse()).x;
+        let best = 0, bestD = Infinity;
+        ePts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
+        const cx = ePts[best][0], cy = ePts[best][1];
+        vl.setAttribute('x1', cx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
+        vl.setAttribute('x2', cx.toFixed(1)); vl.setAttribute('y2', String(H-BOT));
+        dot.setAttribute('cx', cx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
+        vl.style.display=''; dot.style.display='';
+        amtEl.textContent = fmt(dailyPts[best].v);
+        dateEl.textContent = dailyPts[best].dayOfMonth + ' ' + dailyPts[best].month + ' ' + dailyPts[best].year;
       });
-    } else if (earnData.length === 1) {
-      const lbl2 = document.createElementNS(ns,'text');
-      lbl2.setAttribute('x', String(W / 2)); lbl2.setAttribute('y', String(H - 6));
-      lbl2.setAttribute('text-anchor','middle');
-      lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
-      lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-      lbl2.textContent = earnData[0].month + ' ' + earnData[0].year;
-      svg.appendChild(lbl2);
+      ov.addEventListener('mouseleave', () => {
+        vl.style.display='none'; dot.style.display='none';
+        amtEl.textContent = fmt(grandTotal); dateEl.textContent = '';
+      });
+      svg.appendChild(ov);
     }
 
-    // Hover tracker
-    const DOT_R = 3;
-    const vl = document.createElementNS(ns,'line');
-    vl.setAttribute('stroke','#0984E3'); vl.setAttribute('stroke-width','1'); vl.setAttribute('stroke-dasharray','3 2'); vl.style.display='none';
-    svg.appendChild(vl);
-    const dot = document.createElementNS(ns,'circle'); dot.setAttribute('r', String(DOT_R));
-    dot.setAttribute('fill','#fff'); dot.setAttribute('stroke','#0984E3'); dot.setAttribute('stroke-width','2'); dot.style.display='none';
-    svg.appendChild(dot);
-    const ov = document.createElementNS(ns,'rect');
-    ov.setAttribute('x','0'); ov.setAttribute('y','0'); ov.setAttribute('width',String(W)); ov.setAttribute('height',String(H-BOT));
-    ov.setAttribute('fill','transparent'); ov.style.cursor='crosshair';
-    svg.appendChild(ov);
-
-    ov.addEventListener('mousemove', (e) => {
-      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-      const ctm = svg.getScreenCTM(); if (!ctm) return;
-      const mx = pt.matrixTransform(ctm.inverse()).x;
-      let best = 0, bestD = Infinity;
-      ePts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
-      const cx = ePts[best][0], cy = ePts[best][1];
-      vl.setAttribute('x1', cx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
-      vl.setAttribute('x2', cx.toFixed(1)); vl.setAttribute('y2', String(H-BOT));
-      dot.setAttribute('cx', cx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
-      vl.style.display=''; dot.style.display='';
-      amtEl.textContent = fmt(dailyPts[best].v);
-      dateEl.textContent = dailyPts[best].dayOfMonth + ' ' + dailyPts[best].month + ' ' + dailyPts[best].year;
-    });
-    ov.addEventListener('mouseleave', () => {
-      vl.style.display='none'; dot.style.display='none';
-      amtEl.textContent = fmt(grandTotal); dateEl.textContent = '';
-    });
-
     el.appendChild(svg);
-  }, [earnData]);
+
+    // Legend
+    if (hasFunded || hasData) {
+      const legend = document.createElement('div');
+      legend.style.cssText = 'display:flex;gap:12px;padding:4px 16px 12px;font-size:10px;font-weight:600;color:#64748b;';
+      if (hasData) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:5px;';
+        item.innerHTML = `<span style="display:inline-block;width:10px;height:2px;background:#0984E3;border-radius:1px;flex-shrink:0"></span>Released`;
+        legend.appendChild(item);
+      }
+      if (hasFunded) {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:5px;';
+        item.innerHTML = `<span style="display:inline-block;width:10px;height:2px;border-top:2px dashed #F9AB00;flex-shrink:0"></span>Escrow in`;
+        legend.appendChild(item);
+      }
+      el.appendChild(legend);
+    }
+  }, [earnData, fundedEvents]);
 
   return (
     <div

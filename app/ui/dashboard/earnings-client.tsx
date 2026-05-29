@@ -80,11 +80,11 @@ function computePaymentEvents(projects: Project[]): { earned: PaymentEvent[]; in
   let cumE = 0;
   const earned: PaymentEvent[] = rawEarned.map(r => { cumE += r.amount; return { ...r, cum: cumE }; });
 
-  // In Escrow = Funded projects (money locked, not yet released to provider)
+  // Escrow received = ALL projects with a prepaid_date, regardless of current status.
+  // This preserves the full deposit history even after a project is Released.
   const rawEscrow: { date: Date; amount: number }[] = [];
-  projects.filter(p => p.status === 'Funded').forEach(p => {
-    const dateStr = p.prepaid_date || p.start_date;
-    rawEscrow.push({ date: new Date(dateStr), amount: p.amount });
+  projects.filter(p => p.prepaid_date).forEach(p => {
+    rawEscrow.push({ date: new Date(p.prepaid_date!), amount: p.amount });
   });
   rawEscrow.sort((a, b) => a.date.getTime() - b.date.getTime());
   let cumS = 0;
@@ -286,7 +286,7 @@ function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; i
       if (hasEscrow) {
         const item = document.createElement('div');
         item.style.cssText = 'display:flex;align-items:center;gap:6px;';
-        item.innerHTML = `<svg width="16" height="10" viewBox="0 0 16 10" style="flex-shrink:0"><line x1="0" y1="5" x2="16" y2="5" stroke="#F9AB00" stroke-width="1.5" stroke-dasharray="4 2"/><circle cx="8" cy="5" r="3" fill="#F9AB00"/></svg>In escrow`;
+        item.innerHTML = `<svg width="16" height="10" viewBox="0 0 16 10" style="flex-shrink:0"><line x1="0" y1="5" x2="16" y2="5" stroke="#F9AB00" stroke-width="1.5" stroke-dasharray="4 2"/><circle cx="8" cy="5" r="3" fill="#F9AB00"/></svg>Escrow received`;
         legend.appendChild(item);
       }
       el.appendChild(legend);
@@ -771,7 +771,8 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
   const earnData = computeMonthlyEarnings(projects);
   const { earned: paymentEvents, inEscrow: escrowEvents } = computePaymentEvents(projects);
   const total = earnData.reduce((a, b) => a + b.total, 0);
-  const escrowTotal = escrowEvents.length > 0 ? escrowEvents[escrowEvents.length - 1].cum : 0;
+  // Active escrow balance = only currently Funded (locked, not yet released)
+  const currentEscrow = projects.filter(p => p.status === 'Funded').reduce((s, p) => s + p.amount, 0);
   const avg = earnData.length > 0 ? Math.round(total / earnData.length) : 0;
 
   return (
@@ -803,7 +804,7 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
           <div className="stat-row" style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
             {[
               { label: 'Total Released', val: total, color: '#00C896' },
-              { label: 'In Escrow', val: escrowTotal, color: '#F9AB00' },
+              { label: 'In Escrow', val: currentEscrow, color: '#F9AB00' },
               { label: 'Avg / Month', val: avg, color: '#94A3B8' },
             ].map(({ label, val, color }) => (
               <div key={label} className="stat-card" style={{ flex: 1, padding: 20, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
