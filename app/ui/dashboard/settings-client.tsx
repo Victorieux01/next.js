@@ -243,8 +243,8 @@ export function SettingsModal({ user, onClose, onSaved }: {
   const [plan,      setPlan]      = useState(user.plan || 'free');
   const [saving,    setSaving]    = useState(false);
   const [isDark,    setIsDark]    = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return document.documentElement.getAttribute('data-theme') === 'dark';
+    if (typeof window === 'undefined') return true;
+    return document.documentElement.getAttribute('data-theme') !== null;
   });
 
   function toggleTheme() {
