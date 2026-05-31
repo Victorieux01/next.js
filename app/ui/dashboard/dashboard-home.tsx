@@ -43,76 +43,63 @@ function Avatar({ project }: { project: Project }) {
 function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const moNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  // Released earnings by month (blue line)
-  const byKeyReleased: Record<string, { month: string; year: string; v: number }> = {};
-  projects.filter(p => p.status === 'Released').forEach(p => {
-    const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
-    const d = new Date(dateStr);
-    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    if (!byKeyReleased[key]) byKeyReleased[key] = { month: moNames[d.getMonth()], year: String(d.getFullYear()), v: 0 };
-    byKeyReleased[key].v += p.amount;
-  });
-  const earnData = Object.keys(byKeyReleased).sort().map(k => ({ key: k, ...byKeyReleased[k] }));
-
-  // Funded (escrow received) events — all projects with a prepaid_date (any status)
-  const fundedEvents: { date: Date; amount: number; cum: number }[] = [];
-  {
-    const raw: { date: Date; amount: number }[] = [];
-    projects.filter(p => p.prepaid_date).forEach(p => raw.push({ date: new Date(p.prepaid_date!), amount: p.amount }));
-    raw.sort((a, b) => a.date.getTime() - b.date.getTime());
-    let cum = 0;
-    raw.forEach(r => { cum += r.amount; fundedEvents.push({ ...r, cum }); });
-  }
-
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     el.innerHTML = '';
 
-    function smoothstep(t: number) { return t * t * (3 - 2 * t); }
+    const now = new Date();
+    const yr = now.getFullYear();
+    const mo = now.getMonth();
+    const daysInMonth = new Date(yr, mo + 1, 0).getDate();
 
-    // Released earnings: smooth bezier daily points
-    const dailyPts: { month: string; year: string; dayOfMonth: number; v: number }[] = [];
-    let cumTotal = 0;
-    earnData.forEach(mo => {
-      const prev = cumTotal;
-      for (let d = 0; d < 30; d++) {
-        const t = smoothstep(d / 29);
-        dailyPts.push({ month: mo.month, year: mo.year, dayOfMonth: d + 1, v: prev + mo.v * t });
+    // Daily funded amounts for current month
+    const daily = new Array(daysInMonth).fill(0);
+    projects.forEach(p => {
+      if (!p.prepaid_date) return;
+      const d = new Date(p.prepaid_date + 'T00:00:00');
+      if (d.getFullYear() === yr && d.getMonth() === mo) {
+        daily[d.getDate() - 1] += p.amount;
       }
-      cumTotal += mo.v;
     });
-    const grandTotal = cumTotal;
-    const grandFunded = fundedEvents.length > 0 ? fundedEvents[fundedEvents.length - 1].cum : 0;
 
-    // Header
+    // Cumulative
+    const cum: number[] = [];
+    let run = 0;
+    daily.forEach(v => { run += v; cum.push(run); });
+    const total = run;
+
+    // Last day with a funded event
+    let lastDay = -1;
+    for (let i = daily.length - 1; i >= 0; i--) {
+      if (daily[i] > 0) { lastDay = i; break; }
+    }
+
+    const latestDateStr = lastDay >= 0
+      ? new Date(yr, mo, lastDay + 1).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+
+    // ── Header ──
     const hdr = document.createElement('div');
     hdr.style.cssText = 'padding:16px 16px 0;';
+
     const lbl = document.createElement('div');
-    lbl.style.cssText = 'font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;';
-    lbl.textContent = 'Total Earnings';
+    lbl.style.cssText = 'font-size:10px;font-weight:700;color:#94A3B8;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;';
+    lbl.textContent = 'Monthly Escrow';
+
     const amtEl = document.createElement('div');
-    amtEl.style.cssText = 'font-size:28px;font-weight:800;letter-spacing:-0.04em;color:var(--text-primary);line-height:1;';
-    amtEl.textContent = fmt(grandTotal);
+    amtEl.style.cssText = 'font-size:26px;font-weight:800;letter-spacing:-0.04em;color:var(--text-primary);line-height:1;';
+    amtEl.textContent = fmt(total);
+
     const dateEl = document.createElement('div');
     dateEl.style.cssText = 'font-size:12px;color:#0984E3;font-weight:500;margin-top:4px;min-height:18px;';
+    dateEl.textContent = latestDateStr;
+
     hdr.appendChild(lbl); hdr.appendChild(amtEl); hdr.appendChild(dateEl);
     el.appendChild(hdr);
 
-    const hasData = dailyPts.length > 0 && grandTotal > 0;
-    const hasFunded = fundedEvents.length > 0;
-
-    if (!hasData && !hasFunded) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'padding:24px;text-align:center;font-size:12px;color:#94A3B8;';
-      empty.textContent = 'No earnings yet';
-      el.appendChild(empty);
-      return;
-    }
-
-    const W = 300, H = 180, BOT = 22, TOP = 14, PAD = 10;
+    // ── SVG ──
+    const W = 300, H = 160, BOT = 24, TOP = 14, PAD = 12;
     const cH = H - BOT - TOP;
     const ns = 'http://www.w3.org/2000/svg';
 
@@ -121,175 +108,114 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     svg.style.cssText = 'display:block;width:100%;';
 
     const defs = document.createElementNS(ns, 'defs');
-
-    // Blue gradient (Released)
     const grad = document.createElementNS(ns, 'linearGradient');
-    grad.setAttribute('id', 'dash_earn_grad');
+    grad.setAttribute('id', 'me_grad');
     grad.setAttribute('x1','0'); grad.setAttribute('y1','0'); grad.setAttribute('x2','0'); grad.setAttribute('y2','1');
-    const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#0984E3'); s1.setAttribute('stop-opacity','0.15');
-    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','transparent'); s2.setAttribute('stop-opacity','0');
+    const s1 = document.createElementNS(ns,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#0984E3'); s1.setAttribute('stop-opacity','0.25');
+    const s2 = document.createElementNS(ns,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#0984E3'); s2.setAttribute('stop-opacity','0');
     grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
-
-    // Amber gradient (Funded)
-    const gradF = document.createElementNS(ns, 'linearGradient');
-    gradF.setAttribute('id', 'dash_fund_grad');
-    gradF.setAttribute('x1','0'); gradF.setAttribute('y1','0'); gradF.setAttribute('x2','0'); gradF.setAttribute('y2','1');
-    const sf1 = document.createElementNS(ns,'stop'); sf1.setAttribute('offset','0%'); sf1.setAttribute('stop-color','#F9AB00'); sf1.setAttribute('stop-opacity','0.12');
-    const sf2 = document.createElementNS(ns,'stop'); sf2.setAttribute('offset','100%'); sf2.setAttribute('stop-color','transparent'); sf2.setAttribute('stop-opacity','0');
-    gradF.appendChild(sf1); gradF.appendChild(sf2); defs.appendChild(gradF);
     svg.appendChild(defs);
 
-    // Time range: span both funded events and daily earned points
-    const maxV = Math.max(grandTotal, grandFunded, 1);
+    const maxV = Math.max(...cum, 1);
     const valToY = (v: number) => TOP + cH * (1 - v / maxV);
     const botY = H - BOT;
+    const dayToX = (d: number) => PAD + (d / (daysInMonth - 1)) * (W - 2 * PAD);
 
-    // ── Funded step line (amber, dashed) ──
-    if (hasFunded) {
-      const allTimes = fundedEvents.map(e => e.date.getTime());
-      const t0f = Math.min(...allTimes), t1f = Math.max(...allTimes);
-      const tRangeF = Math.max(t1f - t0f, 1);
-      // Map funded event dates into SVG x using same time domain as the released line
-      const allTimesAll = [
-        ...fundedEvents.map(e => e.date.getTime()),
-        ...earnData.map(mo => new Date(mo.key + '-01').getTime()),
-      ];
-      const t0 = Math.min(...allTimesAll), t1 = Math.max(...allTimesAll);
-      const tRange = Math.max(t1 - t0, 1);
-      const dateToX = (d: Date) => PAD + (d.getTime() - t0) / tRange * (W - 2 * PAD);
+    const pts: [number, number][] = cum.map((v, i) => [dayToX(i), valToY(v)]);
 
-      let fundPath = `M${PAD.toFixed(1)},${valToY(0).toFixed(1)}`;
-      fundedEvents.forEach(evt => {
-        fundPath += ` H${dateToX(evt.date).toFixed(1)} V${valToY(evt.cum).toFixed(1)}`;
-      });
-      fundPath += ` H${(W - PAD).toFixed(1)}`;
-
-      const fundArea = document.createElementNS(ns,'path');
-      fundArea.setAttribute('d', fundPath + ` V${botY} H${PAD.toFixed(1)} Z`);
-      fundArea.setAttribute('fill','url(#dash_fund_grad)');
-      svg.appendChild(fundArea);
-
-      const fundLine = document.createElementNS(ns,'path');
-      fundLine.setAttribute('d', fundPath); fundLine.setAttribute('fill','none');
-      fundLine.setAttribute('stroke','#F9AB00'); fundLine.setAttribute('stroke-width','1.5');
-      fundLine.setAttribute('stroke-dasharray','5 3'); fundLine.setAttribute('stroke-linecap','square');
-      svg.appendChild(fundLine);
-
-      // Dots at each funded event
-      fundedEvents.forEach(evt => {
-        const mk = document.createElementNS(ns,'circle');
-        mk.setAttribute('cx', dateToX(evt.date).toFixed(1));
-        mk.setAttribute('cy', valToY(evt.cum).toFixed(1));
-        mk.setAttribute('r', '3');
-        mk.setAttribute('fill','#F9AB00'); mk.setAttribute('stroke','#fff'); mk.setAttribute('stroke-width','1.5');
-        svg.appendChild(mk);
-      });
+    function bez(ps: [number, number][]): string {
+      if (ps.length < 2) return `M${ps[0][0]},${ps[0][1]}`;
+      let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
+      for (let i = 0; i < ps.length - 1; i++) {
+        const dx = ps[i+1][0] - ps[i][0], t = 0.4;
+        path += ` C${(ps[i][0]+dx*t).toFixed(1)},${ps[i][1].toFixed(1)} ${(ps[i+1][0]-dx*t).toFixed(1)},${ps[i+1][1].toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
+      }
+      return path;
     }
 
-    // ── Released bezier line (blue) ──
-    if (hasData) {
-      const ePts = dailyPts.map((_, i) => [
-        PAD + i / (dailyPts.length - 1) * (W - PAD * 2),
-        valToY(dailyPts[i].v),
-      ]);
+    if (total > 0) {
+      const linePath = bez(pts);
+      const areaPath = linePath + ` L${pts[pts.length-1][0].toFixed(1)},${botY} L${pts[0][0].toFixed(1)},${botY} Z`;
 
-      function bez(ps: number[][]): string {
-        if (ps.length < 2) return '';
-        let path = `M${ps[0][0].toFixed(1)},${ps[0][1].toFixed(1)}`;
-        for (let i = 0; i < ps.length - 1; i++) {
-          const dx = ps[i+1][0] - ps[i][0], t = 0.45;
-          const cp1x = ps[i][0] + dx*t, cp1y = ps[i][1];
-          const cp2x = ps[i+1][0] - dx*t, cp2y = ps[i+1][1];
-          path += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${ps[i+1][0].toFixed(1)},${ps[i+1][1].toFixed(1)}`;
-        }
-        return path;
-      }
-
-      const linePath = bez(ePts);
-      const areaPath = linePath + ` L${ePts[ePts.length-1][0].toFixed(1)},${botY} L${ePts[0][0].toFixed(1)},${botY} Z`;
-      const area = document.createElementNS(ns,'path'); area.setAttribute('d', areaPath); area.setAttribute('fill','url(#dash_earn_grad)');
+      const area = document.createElementNS(ns, 'path');
+      area.setAttribute('d', areaPath); area.setAttribute('fill', 'url(#me_grad)');
       svg.appendChild(area);
-      const line = document.createElementNS(ns,'path'); line.setAttribute('d', linePath); line.setAttribute('fill','none');
-      line.setAttribute('stroke','#0984E3'); line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
+
+      const line = document.createElementNS(ns, 'path');
+      line.setAttribute('d', linePath); line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', '#0984E3'); line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-linecap', 'round');
       svg.appendChild(line);
-
-      // Month labels
-      if (earnData.length > 1) {
-        earnData.forEach((mo, m) => {
-          const x = PAD + m / (earnData.length - 1) * (W - PAD * 2);
-          const lbl2 = document.createElementNS(ns,'text');
-          lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 6));
-          lbl2.setAttribute('text-anchor', m === 0 ? 'start' : m === earnData.length - 1 ? 'end' : 'middle');
-          lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
-          lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-          lbl2.textContent = mo.month;
-          svg.appendChild(lbl2);
-        });
-      } else if (earnData.length === 1) {
-        const lbl2 = document.createElementNS(ns,'text');
-        lbl2.setAttribute('x', String(W / 2)); lbl2.setAttribute('y', String(H - 6));
-        lbl2.setAttribute('text-anchor','middle');
-        lbl2.setAttribute('font-size','8'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
-        lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-        lbl2.textContent = earnData[0].month + ' ' + earnData[0].year;
-        svg.appendChild(lbl2);
-      }
-
-      // Hover tracker (follows released line)
-      const DOT_R = 3;
-      const vl = document.createElementNS(ns,'line');
-      vl.setAttribute('stroke','#0984E3'); vl.setAttribute('stroke-width','1'); vl.setAttribute('stroke-dasharray','3 2'); vl.style.display='none';
-      svg.appendChild(vl);
-      const dot = document.createElementNS(ns,'circle'); dot.setAttribute('r', String(DOT_R));
-      dot.setAttribute('fill','#fff'); dot.setAttribute('stroke','#0984E3'); dot.setAttribute('stroke-width','2'); dot.style.display='none';
-      svg.appendChild(dot);
-      const ov = document.createElementNS(ns,'rect');
-      ov.setAttribute('x','0'); ov.setAttribute('y','0'); ov.setAttribute('width',String(W)); ov.setAttribute('height',String(H-BOT));
-      ov.setAttribute('fill','transparent'); ov.style.cursor='crosshair';
-      svg.appendChild(ov);
-
-      ov.addEventListener('mousemove', (e) => {
-        const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-        const ctm = svg.getScreenCTM(); if (!ctm) return;
-        const mx = pt.matrixTransform(ctm.inverse()).x;
-        let best = 0, bestD = Infinity;
-        ePts.forEach((p, i) => { const dd = Math.abs(p[0]-mx); if (dd < bestD) { bestD = dd; best = i; } });
-        const cx = ePts[best][0], cy = ePts[best][1];
-        vl.setAttribute('x1', cx.toFixed(1)); vl.setAttribute('y1', (cy + DOT_R).toFixed(1));
-        vl.setAttribute('x2', cx.toFixed(1)); vl.setAttribute('y2', String(H-BOT));
-        dot.setAttribute('cx', cx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
-        vl.style.display=''; dot.style.display='';
-        amtEl.textContent = fmt(dailyPts[best].v);
-        dateEl.textContent = dailyPts[best].dayOfMonth + ' ' + dailyPts[best].month + ' ' + dailyPts[best].year;
-      });
-      ov.addEventListener('mouseleave', () => {
-        vl.style.display='none'; dot.style.display='none';
-        amtEl.textContent = fmt(grandTotal); dateEl.textContent = '';
-      });
-      svg.appendChild(ov);
     }
+
+    // Static dot + dashed line at last funded day
+    if (lastDay >= 0 && total > 0) {
+      const cx = pts[lastDay][0].toFixed(1), cy = pts[lastDay][1].toFixed(1);
+      const staticVl = document.createElementNS(ns, 'line');
+      staticVl.setAttribute('x1', cx); staticVl.setAttribute('y1', (parseFloat(cy) + 4).toFixed(1));
+      staticVl.setAttribute('x2', cx); staticVl.setAttribute('y2', String(botY));
+      staticVl.setAttribute('stroke', '#0984E3'); staticVl.setAttribute('stroke-width', '1'); staticVl.setAttribute('stroke-dasharray', '3 2');
+      svg.appendChild(staticVl);
+
+      const staticDot = document.createElementNS(ns, 'circle');
+      staticDot.setAttribute('cx', cx); staticDot.setAttribute('cy', cy); staticDot.setAttribute('r', '4');
+      staticDot.setAttribute('fill', '#0984E3'); staticDot.setAttribute('stroke', '#fff'); staticDot.setAttribute('stroke-width', '2');
+      svg.appendChild(staticDot);
+    }
+
+    // X-axis labels: D01, D05, D10, D15, D20, D25, D30
+    const axisLabels = [1, 5, 10, 15, 20, 25, 30].filter(d => d <= daysInMonth);
+    axisLabels.forEach((d, idx) => {
+      const x = dayToX(d - 1);
+      const txt = document.createElementNS(ns, 'text');
+      txt.setAttribute('x', x.toFixed(1));
+      txt.setAttribute('y', String(H - 5));
+      txt.setAttribute('text-anchor', idx === 0 ? 'start' : idx === axisLabels.length - 1 ? 'end' : 'middle');
+      txt.setAttribute('font-size', '8');
+      txt.setAttribute('fill', '#94A3B8');
+      txt.setAttribute('font-weight', '600');
+      txt.setAttribute('font-family', "'Plus Jakarta Sans',sans-serif");
+      txt.textContent = `D${String(d).padStart(2, '0')}`;
+      svg.appendChild(txt);
+    });
+
+    // Hover overlay
+    const hoverVl = document.createElementNS(ns, 'line');
+    hoverVl.setAttribute('stroke', '#0984E3'); hoverVl.setAttribute('stroke-width', '1'); hoverVl.setAttribute('stroke-dasharray', '3 2');
+    hoverVl.style.display = 'none';
+    svg.appendChild(hoverVl);
+
+    const hoverDot = document.createElementNS(ns, 'circle');
+    hoverDot.setAttribute('r', '4');
+    hoverDot.setAttribute('fill', '#0984E3'); hoverDot.setAttribute('stroke', '#fff'); hoverDot.setAttribute('stroke-width', '2');
+    hoverDot.style.display = 'none';
+    svg.appendChild(hoverDot);
+
+    const ov = document.createElementNS(ns, 'rect');
+    ov.setAttribute('x', '0'); ov.setAttribute('y', '0');
+    ov.setAttribute('width', String(W)); ov.setAttribute('height', String(botY));
+    ov.setAttribute('fill', 'transparent'); ov.style.cursor = 'crosshair';
+    svg.appendChild(ov);
+
+    ov.addEventListener('mousemove', (e) => {
+      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      const ctm = svg.getScreenCTM(); if (!ctm) return;
+      const mx = pt.matrixTransform(ctm.inverse()).x;
+      let best = 0, bestD = Infinity;
+      pts.forEach((p, i) => { const dd = Math.abs(p[0] - mx); if (dd < bestD) { bestD = dd; best = i; } });
+      const cx = pts[best][0].toFixed(1), cy = pts[best][1].toFixed(1);
+      hoverDot.setAttribute('cx', cx); hoverDot.setAttribute('cy', cy); hoverDot.style.display = '';
+      hoverVl.setAttribute('x1', cx); hoverVl.setAttribute('y1', (parseFloat(cy) + 4).toFixed(1));
+      hoverVl.setAttribute('x2', cx); hoverVl.setAttribute('y2', String(botY)); hoverVl.style.display = '';
+      amtEl.textContent = fmt(cum[best]);
+      dateEl.textContent = new Date(yr, mo, best + 1).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    });
+    ov.addEventListener('mouseleave', () => {
+      hoverDot.style.display = 'none'; hoverVl.style.display = 'none';
+      amtEl.textContent = fmt(total); dateEl.textContent = latestDateStr;
+    });
 
     el.appendChild(svg);
-
-    // Legend
-    if (hasFunded || hasData) {
-      const legend = document.createElement('div');
-      legend.style.cssText = 'display:flex;gap:12px;padding:4px 16px 12px;font-size:10px;font-weight:600;color:#64748b;';
-      if (hasData) {
-        const item = document.createElement('div');
-        item.style.cssText = 'display:flex;align-items:center;gap:5px;';
-        item.innerHTML = `<span style="display:inline-block;width:10px;height:2px;background:#0984E3;border-radius:1px;flex-shrink:0"></span>Released`;
-        legend.appendChild(item);
-      }
-      if (hasFunded) {
-        const item = document.createElement('div');
-        item.style.cssText = 'display:flex;align-items:center;gap:5px;';
-        item.innerHTML = `<span style="display:inline-block;width:10px;height:2px;border-top:2px dashed #F9AB00;flex-shrink:0"></span>Escrow in`;
-        legend.appendChild(item);
-      }
-      el.appendChild(legend);
-    }
-  }, [earnData, fundedEvents]);
+  }, [projects]);
 
   return (
     <div
@@ -309,10 +235,10 @@ function DonutChart({ funded, released, pending, dispute }: { funded: number; re
   const circumference = 2 * Math.PI * R;
 
   const slices = [
+    { label: 'Dispute', val: dispute, color: '#EF4444' },
     { label: 'Funded', val: funded, color: '#00C896' },
     { label: 'Released', val: released, color: '#0984E3' },
     { label: 'Pending', val: pending, color: '#CBD5E1' },
-    { label: 'Dispute', val: dispute, color: '#EF4444' },
   ];
 
   let offset = circumference * 0.25; // start at top
@@ -329,9 +255,8 @@ function DonutChart({ funded, released, pending, dispute }: { funded: number; re
   
   return (
     <div className="card" style={{ padding: 24, flex: 1 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 15, fontWeight: 700 }}>Escrow Breakdown</span>
-        <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(grand)}</span>
+      <div style={{ marginBottom: 8 }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>Monthly Escrow Breakdown</span>
       </div>
 
       <svg viewBox="0 0 200 200" width="180" height="180" style={{ display: 'block', margin: '4px auto 16px' }}>
@@ -364,7 +289,7 @@ function DonutChart({ funded, released, pending, dispute }: { funded: number; re
         )}
       </svg>
 
-      {slices.map((slice, i) => (
+      {slices.filter(s => s.val > 0).map((slice, i, arr) => (
         <div
           key={slice.label}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: i > 0 ? '1px solid var(--border-light)' : 'none', cursor: 'default' }}
@@ -1023,9 +948,9 @@ export default function DashboardHome({ projects, user }: Props) {
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 10px', flexWrap: 'wrap', gap: 10 }}>
               <span style={{ fontSize: 14, fontWeight: 700 }}>Projects</span>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <div className="search-box">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                   <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                 </div>
                 <select className="fsel" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }}>
@@ -1059,13 +984,18 @@ export default function DashboardHome({ projects, user }: Props) {
             ))}
 
             {pageItems.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 54, borderTop: '1px solid var(--border-light)', fontSize: 13, color: 'var(--text-muted)' }}>
                 No projects found.{' '}
                 <button className="btn" style={{ marginLeft: 8 }} onClick={() => router.push('/dashboard/projects/create')}>
                   Create your first
                 </button>
               </div>
             )}
+
+            {/* Placeholder rows — keeps the table a fixed height regardless of page content */}
+            {Array.from({ length: Math.max(0, PER - (pageItems.length === 0 ? 1 : pageItems.length)) }).map((_, i) => (
+              <div key={`ph-${i}`} style={{ height: 54 }} />
+            ))}
 
             {/* Pagination */}
             <div className="pag">
