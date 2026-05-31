@@ -69,20 +69,11 @@ function EventIcon({ type }: { type: string }) {
   );
 }
 
-interface ClientProjectSummary {
-  id: string; name: string; status: string; amount: number;
-  start_date: string; expected_date: string; color: string; initials: string;
-  user_id: string; provider_name: string; token?: string;
-}
-
-interface Props { project: Project; allProjects?: ClientProjectSummary[] }
-
-export default function ClientProjectView({ project: initialProject, allProjects = [] }: Props) {
+export default function ClientProjectView({ project: initialProject }: { project: Project }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const portalToken = searchParams.get('token') ?? '';
   const [p, setP] = useState(initialProject);
-  const tab = searchParams.get('view') === 'shared' ? 'shared' : 'overview';
   const isPending   = p.status === 'Pending';
   const isDispute   = p.status === 'Dispute';
   const isFinished  = p.status === 'Released';
@@ -163,13 +154,6 @@ export default function ClientProjectView({ project: initialProject, allProjects
         Overview of your project and deliverables for {p.name}.
       </p>
 
-      {/* ── Shared with me view ── */}
-      {tab === 'shared' && (
-        <SharedWithMeSection projects={allProjects} currentId={p.id} />
-      )}
-
-      {/* ── Overview tab ── */}
-      {tab === 'overview' && <>
 
       {/* Top layout — info card only (no actions sidebar for client) */}
       <div className="l2" style={{ gap: 20, marginBottom: 20, alignItems: 'stretch' }}>
@@ -515,7 +499,6 @@ export default function ClientProjectView({ project: initialProject, allProjects
       {/* Files */}
       <ClientFilesSection files={p.files || []} />
 
-      </>}
     </div>
   );
 }
@@ -689,144 +672,6 @@ function ClientFilesSection({ files }: { files: { id: string; name: string; date
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-// ── Shared with me ──────────────────────────────────────────────────────────
-function SharedWithMeSection({ projects, currentId }: { projects: ClientProjectSummary[]; currentId: string }) {
-  const statusColor: Record<string, string> = {
-    Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316',
-  };
-
-  if (projects.length === 0) {
-    return (
-      <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ margin: '0 auto 12px', display: 'block', opacity: 0.4 }}>
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>No shared projects</div>
-        <div style={{ fontSize: 13 }}>Projects shared with your email will appear here.</div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 20 }}>
-          All projects shared with you
-          <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-            {projects.length} project{projects.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0 16px', padding: '6px 12px', borderBottom: '1px solid var(--border-light)', marginBottom: 4 }}>
-          {['Project', 'Status', 'Amount', 'Deadline'].map(h => (
-            <span key={h} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
-          ))}
-        </div>
-        {projects.map((proj) => (
-          <a
-            key={proj.id}
-            href={proj.token ? `/client/${proj.id}?token=${proj.token}` : `/client/${proj.id}`}
-            style={{ textDecoration: 'none', color: 'inherit' }}
-          >
-            <div style={{
-              display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0 16px',
-              alignItems: 'center', padding: '14px 12px',
-              borderBottom: '1px solid var(--border-light)',
-              borderRadius: 8,
-              background: proj.id === currentId ? 'rgba(99,102,241,0.06)' : 'transparent',
-              cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-              onMouseEnter={e => { if (proj.id !== currentId) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = proj.id === currentId ? 'rgba(99,102,241,0.06)' : 'transparent'; }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: proj.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 11, flexShrink: 0 }}>
-                  {proj.initials}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {proj.name}
-                    {proj.id === currentId && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: '#6366F1', background: 'rgba(99,102,241,0.12)', borderRadius: 20, padding: '2px 8px' }}>current</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{proj.provider_name || '—'}</div>
-                </div>
-              </div>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor[proj.status] || '#94A3B8', display: 'inline-block', flexShrink: 0 }} />
-                {proj.status}
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                {proj.amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 })}&nbsp;$
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                {proj.expected_date || '—'}
-              </span>
-            </div>
-          </a>
-        ))}
-      </div>
-      <ProvidersSection projects={projects} />
-    </>
-  );
-}
-
-// ── Providers ───────────────────────────────────────────────────────────────
-function ProvidersSection({ projects }: { projects: ClientProjectSummary[] }) {
-  const byProvider = Object.values(
-    projects.reduce<Record<string, { name: string; count: number; funded: number; statuses: string[] }>>(
-      (acc, p) => {
-        if (!acc[p.user_id]) acc[p.user_id] = { name: p.provider_name, count: 0, funded: 0, statuses: [] };
-        acc[p.user_id].count++;
-        acc[p.user_id].funded += p.amount;
-        acc[p.user_id].statuses.push(p.status);
-        return acc;
-      }, {}
-    )
-  );
-
-  return (
-    <div className="card" style={{ padding: 28, marginBottom: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 20 }}>Providers</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {byProvider.map((prov, i) => {
-          const activeCount = prov.statuses.filter(s => s === 'Funded' || s === 'Pending').length;
-          const doneCount   = prov.statuses.filter(s => s === 'Released').length;
-          return (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '16px 20px', borderRadius: 12,
-              background: 'var(--surface)', border: '1px solid var(--border-light)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12,
-                  background: 'rgba(99,102,241,0.12)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 800, color: '#6366F1', flexShrink: 0,
-                }}>
-                  {(prov.name || 'P').slice(0, 1).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>{prov.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                    {prov.count} project{prov.count !== 1 ? 's' : ''} · {activeCount} active · {doneCount} completed
-                  </div>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total</div>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>
-                  {prov.funded.toLocaleString('fr-CA', { maximumFractionDigits: 0 })}&nbsp;$
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

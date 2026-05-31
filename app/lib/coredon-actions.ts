@@ -516,20 +516,3 @@ export async function addRush(
     return { success: false, error: 'Failed to record rush.' };
   }
 }
-
-export async function getSharedProjectIds(): Promise<string[]> {
-  const session = await auth();
-  if (!session?.user?.email || !session?.user?.id) return [];
-  const email = session.user.email.trim().toLowerCase();
-  const userId = (session.user as any).id as string;
-  try {
-    const { data } = await supabase
-      .from('coredon_projects')
-      .select('id')
-      .ilike('email', email)
-      .neq('user_id', userId);
-    return (data ?? []).map((p: any) => p.id as string);
-  } catch {
-    return [];
-  }
-}

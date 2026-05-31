@@ -57,7 +57,13 @@
       "Bash(pip install *)",
       "Bash(python *)",
       "Bash(findstr \"packageManager\")",
-      "Bash(npm cache *)"
+      "Bash(npm cache *)",
+      "Bash(Remove-Item -Path \"C:\\\\Victor\\\\Projets\\\\nextjs-dashboard\\\\github\\\\app\\\\dashboard\\\\shared\\\\page.tsx\" -Force)",
+      "Bash(Remove-Item -Path \"C:\\\\Victor\\\\Projets\\\\nextjs-dashboard\\\\github\\\\app\\\\dashboard\\\\shared\\\\[projectId]\\\\page.tsx\" -Force)",
+      "Bash(Remove-Item -Path \"C:\\\\Victor\\\\Projets\\\\nextjs-dashboard\\\\github\\\\app\\\\ui\\\\dashboard\\\\shared-client.tsx\" -Force)",
+      "Bash(Remove-Item -Path \"C:\\\\Victor\\\\Projets\\\\nextjs-dashboard\\\\github\\\\app\\\\dashboard\\\\shared\\\\[projectId]\" -Force -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Path \"C:\\\\Victor\\\\Projets\\\\nextjs-dashboard\\\\github\\\\app\\\\dashboard\\\\shared\" -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Remove-Item *)"
     ]
   }
 }

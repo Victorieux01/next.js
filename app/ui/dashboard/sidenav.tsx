@@ -2,9 +2,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { SettingsModal, type UserProfile } from '@/app/ui/dashboard/settings-client';
-import { getUserProfile, getSharedProjectIds } from '@/app/lib/coredon-actions';
+import { getUserProfile } from '@/app/lib/coredon-actions';
 
 const navItems = [
   {
@@ -41,18 +41,6 @@ const navItems = [
     ),
   },
   {
-    page: 'shared',
-    href: '/dashboard/shared',
-    label: 'Shared with me',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
-        <polyline points="16 6 12 2 8 6"/>
-        <line x1="12" y1="2" x2="12" y2="15"/>
-      </svg>
-    ),
-  },
-  {
     page: 'history',
     href: '/dashboard/history',
     label: 'History',
@@ -81,30 +69,6 @@ export default function SideNav({ user }: { user: { name: string; email: string 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsUser, setSettingsUser] = useState<UserProfile | null>(null);
   const [localName, setLocalName] = useState(user.name);
-  const [sharedBadge, setSharedBadge] = useState(0);
-
-  useEffect(() => {
-    async function checkShared() {
-      try {
-        const ids = await getSharedProjectIds();
-        const raw = localStorage.getItem('sharedSeenIds');
-        if (raw === null) {
-          // First time: mark all current projects as seen so we don't badge old ones
-          localStorage.setItem('sharedSeenIds', JSON.stringify(ids));
-          setSharedBadge(0);
-        } else {
-          const seen = new Set<string>(JSON.parse(raw));
-          setSharedBadge(ids.filter(id => !seen.has(id)).length);
-        }
-      } catch {}
-    }
-    checkShared();
-    const interval = setInterval(checkShared, 30_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const displayBadge = pathname.startsWith('/dashboard/shared') ? 0 : sharedBadge;
-
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
     return pathname.startsWith(href);
@@ -151,24 +115,6 @@ export default function SideNav({ user }: { user: { name: string; email: string 
           >
             {item.icon}
             <span className="nb-label">{item.label}</span>
-            {item.page === 'shared' && displayBadge > 0 && (
-              <span style={{
-                marginLeft: 'auto',
-                minWidth: 18, height: 18,
-                borderRadius: 9,
-                background: '#EF4444',
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 5px',
-                lineHeight: 1,
-              }}>
-                {displayBadge}
-              </span>
-            )}
           </Link>
         ))}
       </nav>
