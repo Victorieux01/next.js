@@ -1,9 +1,8 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Project, ProjectDispute, ProjectRush, getDeliverables, getProjectMeta, getJobProfile, PLAN_CONFIGS, calcPayout, type PlanKey } from '@/app/lib/coredon-types';
-import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, sendPreviewNotification, updateProjectStatus, sendClientPortalLink, addRush } from '@/app/lib/coredon-actions';
-import ChatSection from './chat-section';
+import { Project, ProjectDispute, getDeliverables, getProjectMeta, mapPaymentMethod, getJobProfile, PLAN_CONFIGS, calcPayout, type PlanKey } from '@/app/lib/coredon-types';
+import { deleteProject, addRevision, openDispute, resolveDispute, addDisputeNote, updateProjectStatus, sendClientPortalLink } from '@/app/lib/coredon-actions';
 
 function fmt(n: number): string {
   return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
@@ -18,6 +17,7 @@ function Badge({ status }: { status: string }) {
     Funded:      '#00C896',
     'In Review': '#F97316',
     Released:    '#0984E3',
+    Received:    '#10B981',
     Archived:    '#64748B',
     Disputed:    '#EF4444',
     // legacy
@@ -89,9 +89,14 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
   const [submitting,   setSubmitting]   = useState(false);
   const [portalState,  setPortalState]  = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [accelPayout,  setAccelPayout]  = useState(false);
+  const [sharedExpanded, setSharedExpanded] = useState(false);
+
+  useEffect(() => {
+    document.getElementById('content')?.scrollTo({ top: 0 });
+  }, [p.id]);
 
   const isDispute  = p.status === 'Dispute'  || p.status === 'Disputed';
-  const isFinished = p.status === 'Released';
+  const isFinished = p.status === 'Released' || p.status === 'Received';
 
   const payMethod = (p.prepaid_method?.toLowerCase().includes('acss') || p.prepaid_method?.toLowerCase().includes('debit')) ? 'acss' : 'card';
   const payout    = calcPayout(p.amount, userPlan, payMethod);
@@ -109,10 +114,11 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
   const shortId = p.project_code ?? p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
   const events = [
-    ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Stripe Connect') }] : []),
+    ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Card') }] : []),
     ...(p.versions || []).map(v => ({ date: v.date, type: 'upload', label: v.note })),
     ...(p.revisions || []).map(r => ({ date: r.date, type: 'revision', label: r.note })),
     ...(p.released_date ? [{ date: p.released_date, type: 'released', label: 'Payment released to editor' }] : []),
+    ...(p.received_date ? [{ date: p.received_date, type: 'received', label: 'Payment received in bank account' }] : []),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const typeColors: Record<string, { bg: string; color: string }> = {
@@ -120,6 +126,7 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
     upload:   { bg: '#EFF6FF', color: '#2563EB' },
     revision: { bg: '#FEF3C7', color: '#D97706' },
     released: { bg: '#DCFCE7', color: '#16A34A' },
+    received: { bg: '#D1FAE5', color: '#10B981' },
   };
 
   // ── PDF Export ─────────────────────────────────────────────────────────────
@@ -178,7 +185,7 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
     </div>
     <div style="text-align:right;">
       <div class="amount-label">Payment Method</div>
-      <div style="font-size:15px;font-weight:700;">${p.prepaid_method || 'Stripe Connect'}</div>
+      <div style="font-size:15px;font-weight:700;">${p.prepaid_method || '—'}</div>
     </div>
   </div>
 
@@ -326,10 +333,12 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
               ['RELEASED ON',         p.released_date || 'Not finished'],
               ['DURATION',            durationVal],
               ['ID',                  shortId],
-              ['PAYMENT METHOD',      p.prepaid_method || '—'],
+              ['PAYMENT METHOD',      p.prepaid_method || getProjectMeta(p.description).paymentMethods.map(mapPaymentMethod).join(' · ') || '—'],
             ].map(([label, val], i) => {
               const row = Math.floor(i / 5), col = i % 5;
               const isMuted = val === 'Not finished' || val === '—';
+              const isAmount = label === 'AMOUNT';
+              const unpaid = isAmount && !p.prepaid_date;
               return (
                 <div key={label} style={{
                   paddingTop:    row > 0 ? 20 : 0,
@@ -341,6 +350,12 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: isMuted ? 'var(--text-muted)' : 'var(--text-primary)', letterSpacing: '-0.01em' }}>{val}</div>
+                  {unpaid && (
+                    <div style={{ marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#D97706', background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 6, padding: '2px 7px' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#D97706', flexShrink: 0 }} />
+                      Not received
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -383,6 +398,22 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
                 Release Payment
               </button>
             )}
+            {p.status === 'Released' && (
+              <button
+                className="btn-action"
+                style={{ background: '#10B981', color: '#fff', border: 'none', fontWeight: 700 }}
+                disabled={submitting}
+                onClick={async () => {
+                  if (!confirm('Confirm that the payment has been received in your bank account?')) return;
+                  setSubmitting(true);
+                  await updateProjectStatus(p.id, 'Received');
+                  setSubmitting(false);
+                  router.refresh();
+                }}
+              >
+                Mark as Received
+              </button>
+            )}
             <button
               className="btn-action"
               disabled={isDispute}
@@ -396,19 +427,6 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
             </button>
             <button className="btn-action" onClick={() => setRevModal(true)}>Add Revision Note</button>
             <button className="btn-action" onClick={handleExportPdf}>Export as PDF</button>
-            <button
-              className="btn-action"
-              style={{ background: 'rgba(99,102,241,0.12)', color: portalState === 'sent' ? '#00C896' : portalState === 'error' ? '#EF4444' : '#6366F1', fontWeight: 700, border: `1px solid ${portalState === 'sent' ? 'rgba(0,200,150,0.3)' : portalState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(99,102,241,0.25)'}`, opacity: portalState === 'sending' ? 0.6 : 1 }}
-              disabled={portalState === 'sending'}
-              onClick={async () => {
-                setPortalState('sending');
-                const result = await sendClientPortalLink(p.id, p.email, p.name, p.name);
-                setPortalState(result.success ? 'sent' : 'error');
-                setTimeout(() => setPortalState('idle'), 3000);
-              }}
-            >
-              {portalState === 'sending' ? 'Sending…' : portalState === 'sent' ? 'Email Sent!' : portalState === 'error' ? 'Failed — Retry' : 'Send Portal Link'}
-            </button>
             <div style={{ flex: 1 }} />
             <button className="btn-danger" onClick={async () => {
               if (confirm('Delete this project? This cannot be undone.')) await deleteProject(p.id);
@@ -423,83 +441,130 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
         const clientName = meta.clientName || p.email?.split('@')[0] || 'Client';
         const hasFunded   = !!p.prepaid_date;
         const hasApproved = !!p.released_date;
-        const hasDispute  = p.status === 'Dispute';
+        const hasDispute  = p.status === 'Dispute' || p.status === 'Disputed';
         const avatarColor = '#6366F1';
         const initials = clientName.split(' ').map((w: string) => w[0] || '').join('').slice(0, 2).toUpperCase() || '?';
 
         return (
-          <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Shared With</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 42, height: 42, borderRadius: '50%', background: avatarColor + '22', color: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
-                {initials}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{clientName}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{p.email}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {hasFunded && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#00C896', background: 'rgba(0,200,150,0.12)', borderRadius: 20, padding: '3px 10px' }}>Funded</span>
-                )}
-                {hasApproved && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0984E3', background: 'rgba(9,132,227,0.12)', borderRadius: 20, padding: '3px 10px' }}>Approved</span>
-                )}
-                {hasDispute && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', background: 'rgba(239,68,68,0.12)', borderRadius: 20, padding: '3px 10px' }}>In Dispute</span>
-                )}
-                {!hasFunded && !hasApproved && !hasDispute && (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 20, padding: '3px 10px' }}>Pending</span>
-                )}
-              </div>
+          <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
+            {/* Collapsed header row — always visible */}
+            <div
+              onClick={() => setSharedExpanded(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 24px', cursor: 'pointer',
+                transition: 'background 0.1s',
+                borderBottom: sharedExpanded ? '1px solid var(--border-light)' : 'none',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Shared With
+              </span>
+              <svg
+                width="15" height="15" viewBox="0 0 24 24" fill="none"
+                stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round"
+                style={{ transform: sharedExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s', flexShrink: 0 }}
+              >
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
             </div>
+
+            {/* Expanded content */}
+            {sharedExpanded && (
+              <div style={{ padding: '20px 24px' }}>
+                {/* Identity row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--border-light)' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: avatarColor + '22', color: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>
+                    {initials}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{clientName}</div>
+                    <a
+                      href={`mailto:${p.email}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 13, color: '#6366F1', marginTop: 2, display: 'block', textDecoration: 'none' }}
+                    >
+                      {p.email}
+                    </a>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {hasFunded && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#00C896', background: 'rgba(0,200,150,0.12)', borderRadius: 20, padding: '3px 10px' }}>Funded</span>
+                    )}
+                    {hasApproved && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#0984E3', background: 'rgba(9,132,227,0.12)', borderRadius: 20, padding: '3px 10px' }}>Approved</span>
+                    )}
+                    {hasDispute && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', background: 'rgba(239,68,68,0.12)', borderRadius: 20, padding: '3px 10px' }}>In Dispute</span>
+                    )}
+                    {!hasFunded && !hasApproved && !hasDispute && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 20, padding: '3px 10px' }}>Pending</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Pricing Terms */}
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Pricing Terms</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {meta.hourlyRate > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+                      <span>Hourly rate</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(meta.hourlyRate)} / hr</span>
+                    </div>
+                  )}
+                  {meta.hours > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+                      <span>Estimated hours</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{meta.hours} h</span>
+                    </div>
+                  )}
+                  {meta.technicalCost > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+                      <span>Technical cost</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(meta.technicalCost)}</span>
+                    </div>
+                  )}
+                  {meta.artisticCost > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+                      <span>Artistic cost</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(meta.artisticCost)}</span>
+                    </div>
+                  )}
+                  {meta.revisions > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+                      <span>Revisions included</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{meta.revisions}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 4 }}>
+                    <span>Total</span>
+                    <span style={{ color: '#00C896' }}>{fmt(p.amount)}</span>
+                  </div>
+                </div>
+
+                {/* Portal link shortcut */}
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+                  <button
+                    className="btn-action"
+                    style={{ background: 'rgba(99,102,241,0.12)', color: portalState === 'sent' ? '#00C896' : portalState === 'error' ? '#EF4444' : '#6366F1', fontWeight: 700, border: `1px solid ${portalState === 'sent' ? 'rgba(0,200,150,0.3)' : portalState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(99,102,241,0.25)'}`, opacity: portalState === 'sending' ? 0.6 : 1, width: '100%' }}
+                    disabled={portalState === 'sending'}
+                    onClick={async () => {
+                      setPortalState('sending');
+                      const result = await sendClientPortalLink(p.id, p.email, p.name, p.name);
+                      setPortalState(result.success ? 'sent' : 'error');
+                      setTimeout(() => setPortalState('idle'), 3000);
+                    }}
+                  >
+                    {portalState === 'sending' ? 'Sending…' : portalState === 'sent' ? 'Portal Link Sent!' : portalState === 'error' ? 'Failed — Retry' : 'Send Client Portal Link'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
-
-      {/* Payout Breakdown */}
-      <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
-          Payout Breakdown — {planCfg.label} plan
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <span>Project amount</span>
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(p.amount)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <span>Coredon fee ({planCfg.feePercent}%)</span>
-            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.platformFee)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <span>Stripe fee ({payMethod === 'acss' ? 'ACSS — 1% + $0.30, max $4.00' : 'Card — 2.9% + $0.30'})</span>
-            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.stripeFee)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 4 }}>
-            <span>You receive</span>
-            <span style={{ color: '#00C896' }}>{fmt(Math.max(0, payout.veReceives))}</span>
-          </div>
-        </div>
-        {p.status === 'Released' && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Standard payout arrives in 2–3 business days. Accelerated payout (1% Stripe fee) transfers within hours.
-            </div>
-            <button
-              onClick={() => setAccelPayout(true)}
-              style={{ background: 'rgba(0,200,150,0.12)', color: '#00C896', border: '1px solid rgba(0,200,150,0.3)', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
-            >
-              Get Paid Now (1% fee)
-            </button>
-          </div>
-        )}
-        {(p.status === 'In Review' || p.status === 'Ready') && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)', fontSize: 12, color: 'var(--text-secondary)' }}>
-            Auto-release in <strong>{planCfg.autoReleaseDays} days</strong> if client does not respond.
-            Reminders sent at day 3, 7{planCfg.autoReleaseDays > 7 ? ', and 10' : ''}.
-          </div>
-        )}
-      </div>
 
       {/* Revision Requests Section */}
       {(p.revisions || []).length > 0 && (
@@ -550,15 +615,60 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
       </div>
 
       <UploadSection projectId={p.id} versions={p.versions || []} clientEmail={p.email} clientName={p.name} projectName={p.name} disabled={isDispute} />
-      <RushesSection projectId={p.id} rushes={p.rushes || []} disabled={isDispute} />
       <FilesSection files={p.files || []} />
 
-      <ChatSection
-        projectId={p.id}
-        messages={p.messages || []}
-        side="provider"
-        senderName={providerName}
-      />
+      {/* Payout Breakdown */}
+      <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Payout Breakdown
+          </div>
+          {!p.prepaid_date && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#D97706', background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#D97706' }} />
+              Awaiting payment
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Project amount</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(p.amount)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Coredon fee ({planCfg.feePercent}%)</span>
+            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.platformFee)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Stripe fee ({payMethod === 'acss' ? 'ACSS — 1% + $0.30, max $4.00' : 'Card — 2.9% + $0.30'})</span>
+            <span style={{ fontWeight: 600, color: '#EF4444' }}>− {fmt(payout.stripeFee)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, borderTop: '1px solid var(--border-light)', paddingTop: 10, marginTop: 4 }}>
+            <span>You receive</span>
+            <span style={{ color: '#00C896' }}>{fmt(Math.max(0, payout.veReceives))}</span>
+          </div>
+        </div>
+        {p.status === 'Released' && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Standard payout arrives in 2–3 business days. Accelerated payout (1% Stripe fee) transfers within hours.
+            </div>
+            <button
+              onClick={() => setAccelPayout(true)}
+              style={{ background: 'rgba(0,200,150,0.12)', color: '#00C896', border: '1px solid rgba(0,200,150,0.3)', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+            >
+              Get Paid Now (1% fee)
+            </button>
+          </div>
+        )}
+        {(p.status === 'In Review' || p.status === 'Ready') && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Auto-release in <strong>{planCfg.autoReleaseDays} days</strong> if client does not respond.
+            Reminders sent at day 3, 7{planCfg.autoReleaseDays > 7 ? ', and 10' : ''}.
+          </div>
+        )}
+      </div>
+
 
       {/* ── Dispute Step 1 Modal: Reason ── */}
       {disputeStep === 'reason' && (
@@ -956,8 +1066,6 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
   const inputRef  = useRef<HTMLInputElement>(null);
   const [dragging,   setDragging]   = useState(false);
   const [uploading,  setUploading]  = useState(false);
-  const [sending,    setSending]    = useState(false);
-  const [notifState, setNotifState] = useState<'idle' | 'sent' | 'error'>('idle');
   const [error,      setError]      = useState<string | null>(null);
   const [jobInfo,    setJobInfo]    = useState<{ estimatedMinutes: number; costUsd: number; fileName: string } | null>(null);
 
@@ -1105,7 +1213,7 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
               ref={inputRef}
               type="file"
               multiple
-              accept=".mp4,.mov,.zip,.pdf,.png,.jpg,.jpeg,.webp"
+              accept=".mp4,.mov,.pdf,.png,.jpg,.jpeg,.webp"
               style={{ display: 'none' }}
               onChange={e => handleFileSelect(e.target.files)}
             />
@@ -1119,7 +1227,7 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
               {uploading ? 'Uploading…' : <><span>Drop files here or </span><span style={{ color: 'var(--blue)' }}>browse</span></>}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>.mp4 · .mov · .zip · .pdf · .png · .jpg — max 50 GB</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>.mp4 · .mov · .pdf · .png · .jpg — max 50 GB</div>
             {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
           </div>
         </>
@@ -1154,172 +1262,10 @@ function UploadSection({ projectId, versions, clientEmail, clientName, projectNa
         </div>
       )}
 
-      {/* Notify client button */}
-      <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border-light)' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-          Ready for the client to review? Send them a watermarked preview link.
-        </div>
-        <button
-          onClick={async () => {
-            setSending(true);
-            setNotifState('idle');
-            const result = await sendPreviewNotification(projectId, clientEmail, clientName, projectName);
-            setSending(false);
-            setNotifState(result.success ? 'sent' : 'error');
-          }}
-          disabled={sending}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: notifState === 'sent' ? '#00C896' : '#4285F4',
-            color: '#fff', border: 'none', borderRadius: 10,
-            padding: '11px 20px', fontSize: 13, fontWeight: 700,
-            cursor: sending ? 'not-allowed' : 'pointer',
-            opacity: sending ? 0.7 : 1, fontFamily: 'inherit',
-            transition: 'background 0.15s',
-          }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 4l16 8-16 8V4z"/>
-          </svg>
-          {sending ? 'Sending…' : notifState === 'sent' ? 'Preview sent!' : 'Notify client — Send preview'}
-        </button>
-        {notifState === 'error' && (
-          <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>Failed to send. Please try again.</div>
-        )}
-        {notifState === 'sent' && (
-          <div style={{ fontSize: 12, color: '#00C896', marginTop: 8 }}>
-            Preview email sent to {clientEmail}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-// ── Rushes Section ─────────────────────────────────────────────────────────
-function RushesSection({ projectId, rushes, disabled }: {
-  projectId: string;
-  rushes: ProjectRush[];
-  disabled?: boolean;
-}) {
-  const router   = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
-  const [note,      setNote]      = useState('');
-
-  async function handleRushFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    setError(null);
-    for (const file of Array.from(files)) {
-      const sizeMb = file.size / (1024 * 1024);
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('projectId', projectId);
-      fd.append('isRush', 'true');
-      const res  = await fetch('/api/upload-project-file', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (!res.ok) { setError(json.error ?? 'Upload failed'); break; }
-      await addRush(projectId, file.name, sizeMb, note.trim() || undefined);
-    }
-    setUploading(false);
-    setNote('');
-    router.refresh();
-  }
-
-  const totalSizeGb = rushes.reduce((sum, r) => sum + ((r.total_size_mb ?? 0) / 1024), 0);
-
-  return (
-    <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(249,115,22,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
-          </svg>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Rushes</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Raw footage — direct upload, no FFmpeg processing</div>
-        </div>
-        {rushes.length > 0 && (
-          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
-            <span>{rushes.length} file{rushes.length !== 1 ? 's' : ''}</span>
-            <span>{totalSizeGb.toFixed(2)} GB</span>
-          </div>
-        )}
-      </div>
-
-      {disabled ? (
-        <div style={{ borderRadius: 10, padding: '14px 16px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', fontSize: 13, color: '#EF4444', fontWeight: 600 }}>
-          Rush uploads disabled during dispute
-        </div>
-      ) : (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            style={{ display: 'none' }}
-            onChange={e => handleRushFiles(e.target.files)}
-          />
-          {rushes.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-                Rush Manifest · {rushes.length} file{rushes.length !== 1 ? 's' : ''}
-              </div>
-              <div style={{ border: '1px solid var(--border-light)', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 12px', padding: '7px 12px', borderBottom: '1px solid var(--border-light)', background: 'var(--bg)' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>File</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', minWidth: 60, textAlign: 'right' }}>Size</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', minWidth: 80 }}>Date</span>
-                </div>
-                {rushes.map((r, i) => (
-                  <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 12px', alignItems: 'center', padding: '10px 12px', borderTop: i > 0 ? '1px solid var(--border-light)' : 'none' }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{r.name}</div>
-                      {r.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{r.note}</div>}
-                    </div>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {r.total_size_mb ? (r.total_size_mb >= 1024 ? (r.total_size_mb / 1024).toFixed(2) + ' GB' : r.total_size_mb.toFixed(0) + ' MB') : '—'}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 80 }}>{r.date}</span>
-                  </div>
-                ))}
-                <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Total</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{totalSizeGb.toFixed(2)} GB</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <textarea
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="Optional note for this rush batch (e.g. 'Wedding ceremony footage — 2h')"
-            rows={2}
-            style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', color: 'var(--text-primary)', background: 'var(--surface)', resize: 'vertical', lineHeight: 1.5, marginBottom: 10 }}
-          />
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, background: uploading ? 'var(--bg)' : 'rgba(249,115,22,0.12)', color: '#F97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.7 : 1 }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            {uploading ? 'Uploading rushes…' : 'Upload Rush Files'}
-          </button>
-          {error && <div style={{ fontSize: 12, color: '#EF4444', marginTop: 8 }}>{error}</div>}
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-            ProRes · RAW · any format — max 500 GB per file. Billed separately via storage packs.
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 // ── Files & Deliverables ────────────────────────────────────────────────────
 function FilesSection({ files }: { files: { id: string; name: string; date: string; type: string; url?: string }[] }) {
@@ -1376,9 +1322,6 @@ function FilesSection({ files }: { files: { id: string; name: string; date: stri
     <div className="card" style={{ padding: 28, marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Files &amp; Deliverables</div>
-        <button style={{ fontSize: 13, fontWeight: 600, color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-          Upload All as .zip
-        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', padding: '8px 14px', borderBottom: '1px solid var(--border-light)', marginBottom: 4 }}>

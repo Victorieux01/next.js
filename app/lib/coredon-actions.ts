@@ -36,13 +36,17 @@ export async function createProject(formData: FormData) {
   const artisticCost  = parseFloat(formData.get('artisticCost')  as string) || 0;
   const revisions     = parseInt(formData.get('revisions')       as string) || 0;
   const internalNote  = (formData.get('internalNote') as string) || '';
+  const paymentMethods: string[] = (() => {
+    try { return JSON.parse((formData.get('paymentMethods') as string) || '["card"]'); }
+    catch { return ['card']; }
+  })();
 
   const amount   = hourlyRate * hours + technicalCost + artisticCost;
   const initials = getInitials(clientName);
   const color    = COLORS[Math.floor(Math.random() * COLORS.length)];
   const today    = new Date().toISOString().slice(0, 10);
 
-  const meta = JSON.stringify({ t: title, cn: clientName, r: hourlyRate, h: hours, tc: technicalCost, ac: artisticCost, rv: revisions });
+  const meta = JSON.stringify({ t: title, cn: clientName, r: hourlyRate, h: hours, tc: technicalCost, ac: artisticCost, rv: revisions, pm: paymentMethods });
   const description = internalNote
     ? `${deliverables}\n\n[meta]::${meta}\n[internal]::${internalNote}`
     : `${deliverables}\n\n[meta]::${meta}`;
@@ -130,6 +134,7 @@ export async function updateProjectStatus(id: string, status: string) {
   const update: Record<string, string> = { status };
   if (status === 'Funded')   update.prepaid_date   = new Date().toISOString().slice(0, 10);
   if (status === 'Released') update.released_date  = new Date().toISOString().slice(0, 10);
+  if (status === 'Received') update.received_date  = new Date().toISOString().slice(0, 10);
   await supabase.from('coredon_projects').update(update).eq('id', id).eq('user_id', userId);
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/projects');

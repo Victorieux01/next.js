@@ -1,6 +1,7 @@
 import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import SideNav from '@/app/ui/dashboard/sidenav';
+import ScrollToTop from '@/app/ui/dashboard/scroll-to-top';
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -17,6 +18,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
     <div id="main-wrapper">
       <SideNav user={user} />
       <div id="content">
+        <ScrollToTop />
         {children}
       </div>
     </div>

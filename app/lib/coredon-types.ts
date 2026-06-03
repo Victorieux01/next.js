@@ -1,6 +1,6 @@
 export type ProjectStatus =
   | 'Draft' | 'Invited' | 'Processing' | 'Funded' | 'In Review'
-  | 'Released' | 'Archived' | 'Disputed'
+  | 'Released' | 'Received' | 'Archived' | 'Disputed'
   | 'Pending' | 'Dispute' | 'Ready' | 'Revision'; // legacy aliases
 
 export interface ProjectRevision {
@@ -86,6 +86,7 @@ export interface Project {
   prepaid_date?: string;
   prepaid_method?: string;
   released_date?: string;
+  received_date?: string;
   approved_date?: string;
   payment_type?: 'one_time' | 'installments';
   installment_months?: number;
@@ -114,13 +115,23 @@ export function getDeliverables(description: string): string {
   return (description || '').split('\n\n[meta]::')[0].trim();
 }
 
-export function getProjectMeta(description: string): { clientName: string; hourlyRate: number; hours: number; technicalCost: number; artisticCost: number; revisions: number } {
+export function getProjectMeta(description: string): { clientName: string; hourlyRate: number; hours: number; technicalCost: number; artisticCost: number; revisions: number; paymentMethods: string[] } {
   const match = (description || '').match(/\[meta\]::(.*?)(?:\n|$)/);
-  if (!match) return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0 };
+  if (!match) return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0, paymentMethods: ['card'] };
   try {
     const m = JSON.parse(match[1]);
-    return { clientName: m.cn || '', hourlyRate: m.r || 0, hours: m.h || 0, technicalCost: m.tc || 0, artisticCost: m.ac || 0, revisions: m.rv || 0 };
-  } catch { return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0 }; }
+    return { clientName: m.cn || '', hourlyRate: m.r || 0, hours: m.h || 0, technicalCost: m.tc || 0, artisticCost: m.ac || 0, revisions: m.rv || 0, paymentMethods: m.pm || ['card'] };
+  } catch { return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0, paymentMethods: ['card'] }; }
+}
+
+export function mapPaymentMethod(type: string): string {
+  switch (type) {
+    case 'card':            return 'Credit / Debit Card';
+    case 'acss_debit':      return 'Bank Transfer (ACSS)';
+    case 'paypal':          return 'PayPal';
+    case 'us_bank_account': return 'Bank Transfer';
+    default:                return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
 }
 
 export type PlanKey = 'starter' | 'pro' | 'studio' | 'free';

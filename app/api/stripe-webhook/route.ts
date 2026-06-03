@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { stripe } from '@/app/lib/stripe';
 import supabase from '@/app/lib/supabase';
+import { mapPaymentMethod } from '@/app/lib/coredon-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +31,17 @@ export async function POST(req: Request) {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    // payment_method_types is an array on the session
-    const rawMethod = (session.payment_method_types as string[] | undefined)?.[0] ?? 'card';
-    const prepaidMethod = rawMethod === 'acss_debit' ? 'ACSS / EFT' : 'Stripe';
+    // Retrieve the PaymentIntent to get the actual method the client used
+    let prepaidMethod = 'Credit / Debit Card';
+    if (session.payment_intent) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(session.payment_intent as string, {
+          expand: ['payment_method'],
+        });
+        const pmType = (pi.payment_method as Stripe.PaymentMethod | null)?.type ?? 'card';
+        prepaidMethod = mapPaymentMethod(pmType);
+      } catch { /* keep default */ }
+    }
 
     const { error } = await supabase
       .from('coredon_projects')

@@ -1,4 +1,4 @@
-'use client';
+﻿﻿'use client';
 import { useState, useTransition, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/lib/coredon-actions';
@@ -142,7 +142,7 @@ interface Step2 {
   artisticCost: string;
   revisions: string;
   internalNote: string;
-  acceptCard: boolean;
+  paymentMethods: string[];
 }
 
 // ── Shared input style ───────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ const inp: React.CSSProperties = {
   fontSize: 13, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
 };
 function errInp(has: boolean): React.CSSProperties {
-  return has ? { ...inp, borderColor: '#EF4444' } : inp;
+  return has ? { ...inp, border: '1px solid #EF4444' } : inp;
 }
 
 function Field({ label, required, error, hint, children }: {
@@ -204,7 +204,8 @@ function StepBar({ step }: { step: 1 | 2 }) {
 
 // ── Contract preview ─────────────────────────────────────────────────────────
 function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
-  const [refNum] = useState(() => Math.floor(Math.random() * 90000 + 10000));
+  const [refNum, setRefNum] = useState<number | null>(null);
+  useEffect(() => { setRefNum(Math.floor(Math.random() * 90000 + 10000)); }, []);
   const today = new Date().toISOString().slice(0, 10);
 
   const hourlyRate    = parseFloat(s2.hourlyRate)    || 0;
@@ -233,7 +234,7 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
         </div>
         <div style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 10 }}>
           <div>Date <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{today}</span></div>
-          <div>Ref <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>#{refNum}</span></div>
+          <div>Ref <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{refNum ? `#${refNum}` : '—'}</span></div>
         </div>
       </div>
 
@@ -449,7 +450,7 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
     title: '', clientName: '', companyName: '', email: '', deliverables: '', deliveryDate: '',
   });
   const [s2, setS2] = useState<Step2>({
-    hourlyRate: '', hours: '', technicalCost: '0', artisticCost: '0', revisions: '', internalNote: '', acceptCard: false,
+    hourlyRate: '', hours: '', technicalCost: '0', artisticCost: '0', revisions: '', internalNote: '', paymentMethods: ['card'],
   });
 
   function upd1(field: keyof Step1, val: string) {
@@ -481,6 +482,8 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
     return Object.keys(e).length === 0;
   }
 
+  const MAX_AMOUNT = 1_000_000;
+
   function validateStep2(): boolean {
     const e: Partial<Record<keyof Step2, string>> = {};
     if (!s2.hourlyRate || parseFloat(s2.hourlyRate) <= 0)   e.hourlyRate    = 'Must be greater than 0';
@@ -490,6 +493,7 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
     if (s2.revisions !== '' && (isNaN(parseInt(s2.revisions)) || parseInt(s2.revisions) < 0)) {
       e.revisions = 'Must be 0 or more';
     }
+    if (total > MAX_AMOUNT) e.hourlyRate = `Total cannot exceed ${MAX_AMOUNT.toLocaleString('fr-CA')} $`;
     setErrors2(e);
     return Object.keys(e).length === 0;
   }
@@ -508,8 +512,9 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
       fd.append('hours',         s2.hours);
       fd.append('technicalCost', s2.technicalCost);
       fd.append('artisticCost',  s2.artisticCost);
-      fd.append('revisions',     s2.revisions);
-      fd.append('internalNote',  s2.internalNote);
+      fd.append('revisions',      s2.revisions);
+      fd.append('internalNote',   s2.internalNote);
+      fd.append('paymentMethods', JSON.stringify(s2.paymentMethods));
 
       const result = await createProject(fd);
       if (!result?.id) {
@@ -653,35 +658,44 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
               <NumInput value={s2.revisions} onChange={v => upd2('revisions', v)} placeholder="e.g. 3" />
             </Field>
 
-            {/* Card payment toggle */}
-            <div style={{ background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '14px 16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: s2.acceptCard ? 10 : 0 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Accept credit/debit card</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>2.9% + $0.30 — deducted from your payout</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setS2(p => ({ ...p, acceptCard: !p.acceptCard }))}
-                  style={{
-                    width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', flexShrink: 0,
-                    background: s2.acceptCard ? '#00C896' : 'var(--border)',
-                    position: 'relative', transition: 'background 0.2s',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 3, left: s2.acceptCard ? 23 : 3,
-                    width: 18, height: 18, borderRadius: '50%', background: '#fff',
-                    transition: 'left 0.2s',
-                  }} />
-                </button>
-              </div>
-              {s2.acceptCard && (
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  Card fees are absorbed by you (the VE). Coredon keeps its full platform fee.
-                  {s1.companyName.trim()
-                    ? ' B2B client — card fee passthrough is permitted.'
-                    : ' If your client is in Quebec (B2C), you cannot pass card fees to them (LPC).'}
+            {/* Payment Methods */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Accepted Payment Methods <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              {([
+                { id: 'card',       label: 'Credit / Debit Card',   fee: '2.9% + $0.30',   note: '' },
+                { id: 'acss_debit', label: 'Bank Transfer (ACSS)',  fee: '1% (max $4.00)', note: 'Canadian bank accounts only' },
+                { id: 'paypal',     label: 'PayPal',                fee: '3.49% + $0.49',  note: 'Requires Stripe PayPal activation' },
+              ] as const).map(({ id, label, fee, note }) => {
+                const checked = s2.paymentMethods.includes(id);
+                return (
+                  <div
+                    key={id}
+                    onClick={() => {
+                      setS2(prev => {
+                        const has = prev.paymentMethods.includes(id);
+                        const next = has ? prev.paymentMethods.filter(m => m !== id) : [...prev.paymentMethods, id];
+                        return { ...prev, paymentMethods: next.length > 0 ? next : prev.paymentMethods };
+                      });
+                    }}
+                    style={{ background: 'var(--bg)', border: `1px solid ${checked ? '#4285F4' : 'var(--border-light)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}
+                  >
+                    <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${checked ? '#4285F4' : 'var(--border)'}`, background: checked ? '#4285F4' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+                      {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                        Stripe fee: {fee}{note ? <span style={{ marginLeft: 6, color: '#F59E0B' }}>· {note}</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {s2.paymentMethods.includes('card') && s1.companyName.trim() === '' && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', paddingLeft: 4 }}>
+                  B2C clients in Quebec: card fees cannot be passed on (LPC).
                 </div>
               )}
             </div>
@@ -696,13 +710,22 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
             </Field>
 
             {/* Computed total */}
-            <div style={{ background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Estimated Total</span>
-              <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', color: total > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                {total > 0 ? total.toLocaleString('fr-CA', { maximumFractionDigits: 2 }) + ' $' : '—'}
-              </span>
+            <div style={{ background: total > MAX_AMOUNT ? 'rgba(239,68,68,0.06)' : 'var(--bg)', border: `1px solid ${total > MAX_AMOUNT ? 'rgba(239,68,68,0.35)' : 'var(--border-light)'}`, borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Estimated Total</span>
+                <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em', color: total > MAX_AMOUNT ? '#EF4444' : total > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  {total > 0 ? total.toLocaleString('fr-CA', { maximumFractionDigits: 2 }) + ' $' : '—'}
+                </span>
+              </div>
+              {total > MAX_AMOUNT && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#EF4444', fontWeight: 600 }}>
+                  Exceeds the 1 000 000 $ maximum allowed per project.
+                </div>
+              )}
+              {total === 0 && (
+                <div style={{ marginTop: 3, fontSize: 11, color: 'var(--text-muted)' }}>Max. 1 000 000 $</div>
+              )}
             </div>
-
             {submitError && <div className="error-banner">{submitError}</div>}
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 6 }}>

@@ -8,7 +8,7 @@ function fmt(n: number): string {
 }
 
 function Badge({ status }: { status: string }) {
-  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316' };
+  const dotColors: Record<string, string> = { Funded: '#00C896', Released: '#0984E3', Received: '#10B981', Pending: '#F59E0B', Dispute: '#EF4444', Ready: '#A142F4', Revision: '#F97316' };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColors[status] || '#94A3B8', display: 'inline-block' }} />
@@ -30,7 +30,7 @@ function Avatar({ project }: { project: Project }) {
 
 interface Props { projects: Project[] }
 
-const SORT_ORDER: Record<string, number> = { Dispute: 0, Funded: 1, Ready: 2, Revision: 3, Pending: 4, Released: 5 };
+const SORT_ORDER: Record<string, number> = { Dispute: 0, Funded: 1, Ready: 2, Revision: 3, Pending: 4, Released: 5, Received: 6 };
 
 export default function ProjectsClient({ projects: initialProjects }: Props) {
   const router = useRouter();
@@ -108,7 +108,7 @@ export default function ProjectsClient({ projects: initialProjects }: Props) {
               <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <select className="fsel" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }}>
-              {['All', 'Funded', 'Ready', 'Revision', 'Released', 'Pending', 'Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
+              {['All', 'Funded', 'Ready', 'Revision', 'Released', 'Received', 'Pending', 'Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>

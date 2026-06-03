@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Project } from '@/app/lib/coredon-types';
+import { Project, getProjectMeta, calcPayout, PlanKey } from '@/app/lib/coredon-types';
 import { updateUserProfile } from '@/app/lib/coredon-actions';
 import { PLAN_OPTIONS as SHARED_PLAN_OPTIONS, planBadge as sharedPlanBadge } from '@/app/ui/dashboard/settings-client';
 
@@ -55,6 +55,61 @@ function computeMonthlyEarnings(projects: Project[]) {
 
 type EarnDataPoint = { key: string; month: string; year: string; total: number; oneTime: number; installment: number };
 
+type MonthPaymentItem = {
+  projectId: string;
+  projectName: string;
+  clientName: string;
+  hourlyRate: number;
+  hours: number;
+  technicalCost: number;
+  artisticCost: number;
+  amount: number;
+  platformFee: number;
+  stripeFee: number;
+  netAmount: number;
+  paymentType: 'one_time' | 'installment';
+  installmentIndex?: number;
+  totalInstallments?: number;
+};
+
+function stripeMethod(prepaidMethod?: string): 'acss' | 'card' {
+  return prepaidMethod === 'acss_debit' || prepaidMethod === 'us_bank_account' ? 'acss' : 'card';
+}
+
+function computeMonthlyDetails(projects: Project[], plan: string): Record<string, MonthPaymentItem[]> {
+  const released = projects.filter(p => p.status === 'Released');
+  const byMonth: Record<string, MonthPaymentItem[]> = {};
+  const ensure = (key: string) => { if (!byMonth[key]) byMonth[key] = []; };
+  const planKey = (plan as PlanKey) in { starter: 1, pro: 1, studio: 1, free: 1 } ? (plan as PlanKey) : 'starter';
+
+  released.forEach(p => {
+    const meta = getProjectMeta(p.description);
+    const method = stripeMethod(p.prepaid_method);
+    const isInstallment = p.payment_type === 'installments' && (p.installment_months ?? 1) > 1;
+    if (isInstallment) {
+      const months = p.installment_months!;
+      const monthly = p.amount / months;
+      const fees = calcPayout(monthly, planKey, method);
+      const anchor = new Date(p.released_date || p.prepaid_date || p.start_date);
+      for (let i = 0; i < months; i++) {
+        const d = new Date(anchor.getFullYear(), anchor.getMonth() + i, 1);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        ensure(key);
+        byMonth[key].push({ projectId: p.id, projectName: p.name, clientName: meta.clientName || p.email, hourlyRate: meta.hourlyRate, hours: meta.hours, technicalCost: meta.technicalCost, artisticCost: meta.artisticCost, amount: monthly, platformFee: fees.platformFee, stripeFee: fees.stripeFee, netAmount: fees.veReceives, paymentType: 'installment', installmentIndex: i + 1, totalInstallments: months });
+      }
+    } else {
+      const fees = calcPayout(p.amount, planKey, method);
+      const dateStr = p.released_date || p.completion_date || p.end_date || new Date().toISOString().slice(0, 10);
+      const d = new Date(dateStr);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      ensure(key);
+      byMonth[key].push({ projectId: p.id, projectName: p.name, clientName: meta.clientName || p.email, hourlyRate: meta.hourlyRate, hours: meta.hours, technicalCost: meta.technicalCost, artisticCost: meta.artisticCost, amount: p.amount, platformFee: fees.platformFee, stripeFee: fees.stripeFee, netAmount: fees.veReceives, paymentType: 'one_time' });
+    }
+  });
+
+  return byMonth;
+}
+
 // One entry per actual payment event — used by the chart
 type PaymentEvent = { date: Date; amount: number; type: 'one_time' | 'installment'; cum: number };
 type EscrowEvent  = { date: Date; amount: number; cum: number };
@@ -93,6 +148,129 @@ function computePaymentEvents(projects: Project[]): { earned: PaymentEvent[]; in
   return { earned, inEscrow };
 }
 
+// --- MONTH DETAIL MODAL ---
+function MonthDetailModal({ monthLabel, items, onClose }: { monthLabel: string; items: MonthPaymentItem[]; onClose: () => void }) {
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,15,25,0.22)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: 'var(--surface)', borderRadius: 20, width: 480, maxWidth: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', overflow: 'hidden' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>{monthLabel}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{items.length} payment{items.length !== 1 ? 's' : ''}</div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--border-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-muted)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* Payment list */}
+        <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '60vh', overflowY: 'auto' }}>
+          {items.map((item, i) => {
+            const accentColor = item.paymentType === 'installment' ? '#A142F4' : '#00C896';
+            const hasBreakdown = item.technicalCost > 0 || item.artisticCost > 0 || item.hourlyRate > 0;
+            return (
+              <div key={`${item.projectId}-${i}`} style={{ border: '1px solid var(--border-light)', borderRadius: 14, overflow: 'hidden', background: 'var(--bg)' }}>
+                {/* Card header */}
+                <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.projectName}</div>
+                    {item.clientName && (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        {item.clientName}
+                      </div>
+                    )}
+                    {item.paymentType === 'installment' && item.totalInstallments && (
+                      <div style={{ fontSize: 11, color: accentColor, marginTop: 4, fontWeight: 600 }}>
+                        Installment {item.installmentIndex} of {item.totalInstallments}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: accentColor }}>{fmt(item.amount)}</div>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: accentColor, background: `${accentColor}15`, border: `1px solid ${accentColor}30`, padding: '2px 8px', borderRadius: 99, display: 'inline-block', marginTop: 4 }}>
+                      {item.paymentType === 'installment' ? 'Installment' : 'One-time'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cost breakdown */}
+                {hasBreakdown && (
+                  <div style={{ padding: '10px 16px 12px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: 0 }}>
+                    {item.technicalCost > 0 && (
+                      <div style={{ flex: 1, paddingRight: 12, borderRight: '1px solid var(--border-light)' }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Technical</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(item.technicalCost)}</div>
+                      </div>
+                    )}
+                    {item.artisticCost > 0 && (
+                      <div style={{ flex: 1, paddingLeft: item.technicalCost > 0 ? 12 : 0, paddingRight: item.hourlyRate > 0 ? 12 : 0, borderRight: item.hourlyRate > 0 ? '1px solid var(--border-light)' : 'none' }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Artistic</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(item.artisticCost)}</div>
+                      </div>
+                    )}
+                    {item.hourlyRate > 0 && (
+                      <div style={{ flex: 1, paddingLeft: (item.technicalCost > 0 || item.artisticCost > 0) ? 12 : 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Hourly rate</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {fmt(item.hourlyRate)}/h
+                          {item.hours > 0 && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, marginLeft: 4 }}>× {item.hours}h</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Fee breakdown */}
+                <div style={{ padding: '10px 16px 12px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: 0, background: 'rgba(0,0,0,0.03)' }}>
+                  <div style={{ flex: 1, paddingRight: 12, borderRight: '1px solid var(--border-light)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Platform fee</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E05252' }}>−{fmt(item.platformFee)}</div>
+                  </div>
+                  <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: '1px solid var(--border-light)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Stripe fee</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E05252' }}>−{fmt(item.stripeFee)}</div>
+                  </div>
+                  <div style={{ flex: 1, paddingLeft: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>You receive</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#00C896' }}>{fmt(item.netAmount)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px 20px', borderTop: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Gross billed</div>
+            <div style={{ fontSize: 11, color: '#E05252', marginTop: 2 }}>−{fmt(items.reduce((s, it) => s + it.platformFee + it.stripeFee, 0))} fees</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{fmt(items.reduce((s, it) => s + it.amount, 0))}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#00C896' }}>{fmt(items.reduce((s, it) => s + it.netAmount, 0))}</div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // --- SUB-COMPONENT: CHART ---
 // Step chart: blue solid = Released earnings, amber dashed = Funded in escrow.
 function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; inEscrow: EscrowEvent[] }) {
@@ -114,7 +292,7 @@ function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; i
     lbl.style.cssText = 'font-size: 10px; font-weight: 600; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.05em;';
     lbl.textContent = 'Earnings over time';
     const amtEl = document.createElement('div');
-    amtEl.style.cssText = 'font-size: 28px; font-weight: 700; color: #0F172A; line-height: 1;';
+    amtEl.style.cssText = 'font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1;';
     amtEl.textContent = fmt(grandEarned);
     const dateEl = document.createElement('div');
     dateEl.style.cssText = 'font-size: 11px; color: #0984E3; font-weight: 500; margin-top: 4px; min-height: 18px;';
@@ -139,7 +317,8 @@ function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; i
     // Time range spans all events (earned + escrow)
     const allTimes = allEvents.map(e => e.date.getTime());
     const t0 = Math.min(...allTimes);
-    const t1 = Math.max(...allTimes);
+    const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+    const t1 = Math.max(...allTimes, todayEnd.getTime());
     const tRange = t1 > t0 ? t1 - t0 : 1;
     const dateToX = (d: Date) => PAD + (d.getTime() - t0) / tRange * (W - 2 * PAD);
     const valToY  = (v: number) => TOP + cH * (1 - v / maxV);
@@ -203,22 +382,29 @@ function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; i
       });
     }
 
-    // X-axis labels: one per unique month, from all events
-    const shownMonths = new Set<string>();
-    allEvents.forEach((evt, i) => {
-      const mk = `${evt.date.getFullYear()}-${evt.date.getMonth()}`;
-      if (shownMonths.has(mk)) return;
-      shownMonths.add(mk);
-      const x = dateToX(evt.date);
+    // X-axis labels: one per month, positioned at the 1st (or t0 if that month starts before t0)
+    const startMonth = new Date(t0); startMonth.setDate(1); startMonth.setHours(0,0,0,0);
+    const endDate = new Date(t1);
+    const monthTicks: { d: Date; label: string }[] = [];
+    const cur = new Date(startMonth);
+    while (cur.getTime() <= endDate.getTime()) {
+      const plotDate = new Date(Math.max(cur.getTime(), t0));
+      monthTicks.push({ d: plotDate, label: moNames[cur.getMonth()] });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    const MIN_TICK_GAP = 55;
+    const visibleTicks = monthTicks.filter(({ d }, i) => {
+      if (i === monthTicks.length - 1) return true;
+      return dateToX(monthTicks[i + 1].d) - dateToX(d) >= MIN_TICK_GAP;
+    });
+    visibleTicks.forEach(({ d, label }, i) => {
+      const x = dateToX(d);
       const lbl2 = document.createElementNS(ns,'text');
       lbl2.setAttribute('x', x.toFixed(1)); lbl2.setAttribute('y', String(H - 7));
-      lbl2.setAttribute('text-anchor', i === 0 ? 'start' : i === allEvents.length - 1 ? 'end' : 'middle');
+      lbl2.setAttribute('text-anchor', i === 0 ? 'start' : i === visibleTicks.length - 1 ? 'end' : 'middle');
       lbl2.setAttribute('font-size','10'); lbl2.setAttribute('fill','#94A3B8'); lbl2.setAttribute('font-weight','600');
       lbl2.setAttribute('font-family',"'Plus Jakarta Sans',sans-serif");
-      const asPayment = evt as PaymentEvent;
-      lbl2.textContent = asPayment.type === 'one_time'
-        ? `${moNames[evt.date.getMonth()]} ${evt.date.getDate()}`
-        : moNames[evt.date.getMonth()];
+      lbl2.textContent = label;
       svg.appendChild(lbl2);
     });
 
@@ -252,10 +438,8 @@ function EarningsOverTimeChart({ earned, inEscrow }: { earned: PaymentEvent[]; i
       dot.setAttribute('cx', mx.toFixed(1)); dot.setAttribute('cy', cy.toFixed(1));
       vl.style.display=''; dot.style.display='';
       amtEl.textContent = fmt(cumAtX);
-      if (nearEvt) {
-        const d = nearEvt.date;
-        dateEl.textContent = `${moNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-      }
+      const hoverDate = new Date(tAtX);
+      dateEl.textContent = `${moNames[hoverDate.getMonth()]} ${hoverDate.getDate()}, ${hoverDate.getFullYear()}`;
     });
     ov.addEventListener('mouseleave', () => {
       vl.style.display='none'; dot.style.display='none';
@@ -768,7 +952,9 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
   const [activeTab, setActiveTab] = useState<'earnings' | 'payment'>('earnings');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [user, setUser] = useState<UserProfile>(initialUser ?? DEFAULT_USER);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const earnData = computeMonthlyEarnings(projects);
+  const monthDetails = computeMonthlyDetails(projects, user.plan);
   const { earned: paymentEvents, inEscrow: escrowEvents } = computePaymentEvents(projects);
   const total = earnData.reduce((a, b) => a + b.total, 0);
   // Active escrow balance = only currently Funded (locked, not yet released)
@@ -826,7 +1012,14 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
                 : row.installment > 0 && row.oneTime === 0 ? 'installment'
                 : row.oneTime > 0 && row.installment > 0 ? 'mixed' : null;
               return (
-                <div key={row.key} className="tbl-row" style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--border-light)' }}>
+                <div
+                  key={row.key}
+                  className="tbl-row"
+                  onClick={() => setSelectedMonthKey(row.key)}
+                  style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderTop: i === 0 ? 'none' : '1px solid var(--border-light)', cursor: 'pointer', transition: 'background 0.12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
                   <div style={{ flex: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {row.month} {row.year}
                     {typeLabel === 'one_time' && (
@@ -841,10 +1034,21 @@ export default function EarningsClient({ projects, user: initialUser }: Props) {
                   </div>
                   <div style={{ flex: 1, textAlign: 'right', color: '#0984E3', fontWeight: 600 }}>{fmt(row.total)}</div>
                   <div style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{fmt(Math.round(row.total * 0.95))}</div>
+                  <div style={{ marginLeft: 12, color: 'var(--text-muted)' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {selectedMonthKey && monthDetails[selectedMonthKey] && (
+            <MonthDetailModal
+              monthLabel={(() => { const r = earnData.find(d => d.key === selectedMonthKey); return r ? `${r.month} ${r.year}` : selectedMonthKey; })()}
+              items={monthDetails[selectedMonthKey]}
+              onClose={() => setSelectedMonthKey(null)}
+            />
+          )}
         </div>
       )}
 

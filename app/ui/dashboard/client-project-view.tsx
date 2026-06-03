@@ -1,15 +1,14 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Project, ProjectDispute, getDeliverables } from '@/app/lib/coredon-types';
+import { Project, ProjectDispute, getDeliverables, getProjectMeta } from '@/app/lib/coredon-types';
 import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
-import ChatSection from './chat-section';
 
-async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string, token: string) {
+async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string, token: string, paymentMethods: string[]) {
   const res = await fetch('/api/fund-project', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, amount, email, projectName, token }),
+    body: JSON.stringify({ projectId, amount, email, projectName, token, paymentMethods }),
   });
   const data = await res.json();
   if (data.url) window.location.href = data.url;
@@ -123,7 +122,7 @@ export default function ClientProjectView({ project: initialProject }: { project
   const shortId = p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
   const events = [
-    ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Stripe Connect') }] : []),
+    ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Card') }] : []),
     ...(p.versions || []).map(v => ({ date: v.date, type: 'upload', label: v.note })),
     ...(p.revisions || []).map(r => ({ date: r.date, type: 'revision', label: r.note })),
     ...(p.approved_date ? [{ date: p.approved_date, type: 'approved', label: 'Deliverables approved by client' }] : []),
@@ -279,7 +278,7 @@ export default function ClientProjectView({ project: initialProject }: { project
               setPaying(true);
               setPayError('');
               try {
-                await redirectToCheckout(p.id, p.amount, p.email ?? '', p.name, portalToken);
+                await redirectToCheckout(p.id, p.amount, p.email ?? '', p.name, portalToken, getProjectMeta(p.description).paymentMethods);
               } catch {
                 setPayError('Could not start checkout. Please try again.');
                 setPaying(false);
@@ -487,14 +486,6 @@ export default function ClientProjectView({ project: initialProject }: { project
         })}
       </div>
 
-      {/* Chat */}
-      <ChatSection
-        projectId={p.id}
-        messages={p.messages || []}
-        side="client"
-        senderName={p.name || p.email?.split('@')[0] || 'Client'}
-        token={portalToken}
-      />
 
       {/* Files */}
       <ClientFilesSection files={p.files || []} />

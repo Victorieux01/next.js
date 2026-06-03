@@ -3,12 +3,13 @@ import { stripe } from '@/app/lib/stripe';
 
 export async function POST(req: Request) {
   try {
-    const { projectId, amount, email, projectName, token } = await req.json();
+    const { projectId, amount, email, projectName, token, paymentMethods } = await req.json();
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app';
+    const methods = Array.isArray(paymentMethods) && paymentMethods.length > 0 ? paymentMethods : ['card'];
 
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      payment_method_types: methods as ('card' | 'acss_debit' | 'paypal')[],
       mode: 'payment',
       customer_email: email,
       line_items: [

@@ -344,7 +344,7 @@ function buildNotifications(projects: Project[]): NotifEvent[] {
         id: 'funded-' + p.id,
         type: 'funded',
         title: `Escrow funded — ${p.name}`,
-        description: `${fmt(p.amount)} held in escrow via ${p.prepaid_method || 'Stripe Connect'}.`,
+        description: `${fmt(p.amount)} held in escrow via ${p.prepaid_method || 'Card'}.`,
         date: p.prepaid_date,
         color: '#00C896',
         initials: p.initials,
@@ -904,21 +904,6 @@ export default function DashboardHome({ projects, user }: Props) {
               <div className="stat-bar" style={{ background: '#94A3B8' }} />
             </div>
 
-            {/* Released */}
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'var(--blue-bg)' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0984E3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </div>
-              <div className="stat-card-inner">
-                <div className="stat-label">Released</div>
-                <div className="stat-val">{fmt(released)}</div>
-                {released > 0 && <div className="stat-delta" style={{ color: '#0984E3' }}>↑ Paid out</div>}
-              </div>
-              <div className="stat-bar" style={{ background: '#0984E3' }} />
-            </div>
-
             {/* Next Deadline */}
             <div className="stat-card">
               <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>
@@ -954,7 +939,7 @@ export default function DashboardHome({ projects, user }: Props) {
                   <input placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
                 </div>
                 <select className="fsel" value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }}>
-                  {['All','Funded','Ready','Revision','Released','Pending','Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
+                  {['All','Funded','Ready','Revision','Released','Received','Pending','Dispute'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>
@@ -985,10 +970,16 @@ export default function DashboardHome({ projects, user }: Props) {
 
             {pageItems.length === 0 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 54, borderTop: '1px solid var(--border-light)', fontSize: 13, color: 'var(--text-muted)' }}>
-                No projects found.{' '}
-                <button className="btn" style={{ marginLeft: 8 }} onClick={() => router.push('/dashboard/projects/create')}>
-                  Create your first
-                </button>
+                {projects.length === 0 ? (
+                  <>
+                    No projects yet.{' '}
+                    <button className="btn" style={{ marginLeft: 8 }} onClick={() => router.push('/dashboard/projects/create')}>
+                      Create your first
+                    </button>
+                  </>
+                ) : (
+                  'No projects found.'
+                )}
               </div>
             )}
 
