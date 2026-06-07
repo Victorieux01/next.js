@@ -98,7 +98,8 @@ export default function ProjectDetailClient({ project: p, providerName, userPlan
   const isDispute  = p.status === 'Dispute'  || p.status === 'Disputed';
   const isFinished = p.status === 'Released' || p.status === 'Received';
 
-  const payMethod = (p.prepaid_method?.toLowerCase().includes('acss') || p.prepaid_method?.toLowerCase().includes('debit')) ? 'acss' : 'card';
+  const effectivePaymentMethod = p.prepaid_method || getProjectMeta(p.description).paymentMethods[0] || 'card';
+  const payMethod = (effectivePaymentMethod.toLowerCase().includes('acss') || effectivePaymentMethod.toLowerCase().includes('debit')) ? 'acss' : 'card';
   const payout    = calcPayout(p.amount, userPlan, payMethod);
   const planCfg   = PLAN_CONFIGS[userPlan];
 

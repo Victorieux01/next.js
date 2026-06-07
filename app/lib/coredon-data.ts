@@ -204,14 +204,14 @@ export async function fetchProjectsByEmail(
 ): Promise<{
   id: string; name: string; status: string; amount: number;
   start_date: string; expected_date: string; color: string; initials: string;
-  user_id: string; provider_name: string;
+  user_id: string; provider_name: string; project_code?: string;
 }[]> {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return [];
   try {
     let query = supabase
       .from('coredon_projects')
-      .select('id, name, status, amount, start_date, expected_date, color, initials, user_id, email')
+      .select('id, name, status, amount, start_date, expected_date, color, initials, user_id, email, project_code')
       .ilike('email', normalizedEmail)
       .order('created_at', { ascending: false });
 
@@ -255,6 +255,7 @@ export async function fetchProjectsByEmail(
       initials: p.initials,
       user_id: p.user_id,
       provider_name: providerMap[p.user_id] || 'Your Provider',
+      project_code: p.project_code ?? undefined,
     }));
   } catch {
     return [];

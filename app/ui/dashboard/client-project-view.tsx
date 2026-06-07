@@ -1,8 +1,8 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Project, ProjectDispute, getDeliverables, getProjectMeta } from '@/app/lib/coredon-types';
-import { approveProject, clientRequestChanges } from '@/app/lib/coredon-actions';
+import { Project, ProjectDispute, ProjectMessage, getDeliverables, getProjectMeta } from '@/app/lib/coredon-types';
+import { approveProject, clientRequestChanges, sendMessageAsClient } from '@/app/lib/coredon-actions';
 
 async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string, token: string, paymentMethods: string[]) {
   const res = await fetch('/api/fund-project', {
@@ -15,7 +15,7 @@ async function redirectToCheckout(projectId: string, amount: number, email: stri
 }
 
 function fmt(n: number): string {
-  return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$';
+  return n.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + ' $';
 }
 
 function parseDisputeReason(raw: string): { original: string; notes: { date: string; text: string }[] } {
@@ -30,12 +30,18 @@ function parseDisputeReason(raw: string): { original: string; notes: { date: str
 
 function Badge({ status }: { status: string }) {
   const dotColors: Record<string, string> = {
-    Funded:   '#00C896',
-    Released: '#0984E3',
-    Pending:  '#F59E0B',
-    Dispute:  '#EF4444',
-    Ready:    '#A142F4',
-    Revision: '#F97316',
+    Funded:      '#00C896',
+    Released:    '#0984E3',
+    Pending:     '#F59E0B',
+    Invited:     '#F59E0B',
+    Dispute:     '#EF4444',
+    Disputed:    '#EF4444',
+    Ready:       '#A142F4',
+    Revision:    '#F97316',
+    Processing:  '#8B5CF6',
+    'In Review': '#F97316',
+    Received:    '#10B981',
+    Archived:    '#64748B',
   };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
@@ -68,17 +74,37 @@ function EventIcon({ type }: { type: string }) {
   );
 }
 
-export default function ClientProjectView({ project: initialProject }: { project: Project }) {
+type ProjectSummary = {
+  id: string;
+  name: string;
+  status: string;
+  amount: number;
+  color: string;
+  initials: string;
+  project_code?: string;
+  token: string;
+};
+
+export default function ClientProjectView({
+  project: initialProject,
+  allProjects,
+}: {
+  project: Project;
+  allProjects?: ProjectSummary[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const portalToken = searchParams.get('token') ?? '';
   const [p, setP] = useState(initialProject);
-  const isPending   = p.status === 'Pending';
-  const isDispute   = p.status === 'Dispute';
-  const isFinished  = p.status === 'Released';
-  const isFunded    = p.status === 'Funded';
-  const isReady     = p.status === 'Ready';
-  const isRevision  = p.status === 'Revision';
+
+  const isPending    = p.status === 'Pending'  || p.status === 'Invited';
+  const isDispute    = p.status === 'Dispute'  || p.status === 'Disputed';
+  const isFinished   = p.status === 'Released' || p.status === 'Received';
+  const isFunded     = p.status === 'Funded';
+  const isReady      = p.status === 'Ready'    || p.status === 'In Review';
+  const isRevision   = p.status === 'Revision';
+  const isProcessing = p.status === 'Processing';
+  const isArchived   = p.status === 'Archived';
 
   // Pay / Fund state
   const [paying, setPaying] = useState(false);
@@ -119,7 +145,7 @@ export default function ClientProjectView({ project: initialProject }: { project
     }
   }
 
-  const shortId = p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
+  const projectCode = p.project_code || p.id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
   const events = [
     ...(p.prepaid_date ? [{ date: p.prepaid_date, type: 'payment', label: 'Escrow funded via ' + (p.prepaid_method || 'Card') }] : []),
@@ -139,6 +165,10 @@ export default function ClientProjectView({ project: initialProject }: { project
 
   const activeDisputes = (p.disputes || []).filter((d: ProjectDispute) => d.status === 'Open');
 
+  const statusColor = isDispute ? '#EF4444' : isFinished ? '#0984E3' : isFunded ? '#00C896' : isReady ? '#A142F4' : isRevision ? '#F97316' : isProcessing ? '#8B5CF6' : '#F59E0B';
+
+  const otherProjects = (allProjects || []).filter(op => op.id !== p.id);
+
   return (
     <div className="page fade-in">
       {/* Breadcrumb */}
@@ -153,8 +183,7 @@ export default function ClientProjectView({ project: initialProject }: { project
         Overview of your project and deliverables for {p.name}.
       </p>
 
-
-      {/* Top layout — info card only (no actions sidebar for client) */}
+      {/* Top layout */}
       <div className="l2" style={{ gap: 20, marginBottom: 20, alignItems: 'stretch' }}>
 
         {/* Info Card */}
@@ -172,8 +201,17 @@ export default function ClientProjectView({ project: initialProject }: { project
               {p.initials}
             </div>
             <div>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 2 }}>{getDeliverables(p.description)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</div>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+                  background: 'var(--surface)', border: '1px solid var(--border-light)',
+                  borderRadius: 6, padding: '2px 8px', letterSpacing: '0.05em',
+                }}>
+                  {projectCode}
+                </span>
+              </div>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>{getDeliverables(p.description)}</div>
             </div>
           </div>
 
@@ -182,12 +220,12 @@ export default function ClientProjectView({ project: initialProject }: { project
               ['START DATE',          p.start_date || '—'],
               ['AMOUNT',              fmt(p.amount)],
               ['PREPAID ON',          p.prepaid_date || '—'],
-              ['NUMBER OF REVISIONS', String((p.revisions || []).length)],
+              ['REVISIONS',           String((p.revisions || []).length)],
               ['EXPECTED DELIVERY',   p.expected_date || '—'],
-              ['END DATE',            isFinished ? (p.end_date || '—') : 'Not finished'],
+              ['END DATE',            isFinished ? (p.end_date || p.completion_date || '—') : 'Not finished'],
               ['RELEASED ON',         p.released_date || 'Not finished'],
               ['DURATION',            durationVal],
-              ['ID',                  shortId],
+              ['PROJECT CODE',        projectCode],
               ['PAYMENT METHOD',      p.prepaid_method || '—'],
             ].map(([label, val], i) => {
               const row = Math.floor(i / 5), col = i % 5;
@@ -209,16 +247,16 @@ export default function ClientProjectView({ project: initialProject }: { project
           </div>
         </div>
 
-        {/* Status Card (replaces Actions for the client) */}
+        {/* Status Card */}
         <div className="card" style={{ width: 240, padding: 28, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>Project Status</div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
             {[
-              { label: 'Status',   val: p.status,                color: p.status === 'Dispute' ? '#EF4444' : p.status === 'Released' ? '#0984E3' : p.status === 'Funded' ? '#00C896' : p.status === 'Ready' ? '#A142F4' : p.status === 'Revision' ? '#F97316' : '#F59E0B' },
-              { label: 'Amount',   val: fmt(p.amount),           color: 'var(--text-primary)' },
-              { label: 'Start',    val: p.start_date || '—',     color: 'var(--text-secondary)' },
-              { label: 'Deadline', val: p.expected_date || '—',  color: 'var(--text-secondary)' },
+              { label: 'Status',   val: p.status,               color: statusColor },
+              { label: 'Amount',   val: fmt(p.amount),          color: 'var(--text-primary)' },
+              { label: 'Start',    val: p.start_date || '—',    color: 'var(--text-secondary)' },
+              { label: 'Deadline', val: p.expected_date || '—', color: 'var(--text-secondary)' },
             ].map(({ label, val, color }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
@@ -239,10 +277,22 @@ export default function ClientProjectView({ project: initialProject }: { project
               <div style={{ fontSize: 12, color: '#166534', lineHeight: 1.4 }}>Payment has been released.</div>
             </div>
           )}
+          {isProcessing && (
+            <div style={{ background: 'rgba(139,92,246,0.08)', borderRadius: 8, padding: '10px 12px', border: '1px solid rgba(139,92,246,0.25)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#8B5CF6', marginBottom: 2 }}>Processing</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>Your files are being prepared.</div>
+            </div>
+          )}
+          {isArchived && (
+            <div style={{ background: 'var(--surface)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 2 }}>Archived</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>This project has been archived.</div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Payment Panel — shown when still Pending */}
+      {/* Payment Panel — shown when Pending or Invited */}
       {isPending && (
         <div className="card" style={{ padding: 28, marginBottom: 20, border: '1px solid rgba(99,102,241,0.25)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -304,6 +354,23 @@ export default function ClientProjectView({ project: initialProject }: { project
         </div>
       )}
 
+      {/* Processing banner */}
+      {isProcessing && (
+        <div className="card" style={{ padding: 24, marginBottom: 20, border: '1px solid rgba(139,92,246,0.25)', background: 'rgba(139,92,246,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(139,92,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#8B5CF6' }}>Files are being processed</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>Your provider is preparing the deliverables. You will be notified by email when they are ready for review.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Revision notice */}
       {isRevision && (
         <div className="card" style={{ padding: 24, marginBottom: 20, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.05)' }}>
@@ -315,13 +382,30 @@ export default function ClientProjectView({ project: initialProject }: { project
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#F97316' }}>Revision in progress</div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>Your change request has been received. The provider is working on a new version. You will be notified when the updated preview is ready.</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>Your change request has been received. The provider is working on a new version. You will be notified when the updated deliverable is ready.</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Escrow Action Panel — only shown while Funded or Ready */}
+      {/* Archived banner */}
+      {isArchived && (
+        <div className="card" style={{ padding: 24, marginBottom: 20, border: '1px solid var(--border-light)', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(100,116,139,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#64748B' }}>Project Archived</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>This project has been archived and is available for reference only.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Escrow Action Panel — shown while Funded, Ready, or In Review */}
       {(isFunded || isReady) && !approved && (
         <div className="card" style={{ padding: 28, marginBottom: 20, border: '1px solid rgba(0,200,150,0.25)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -440,7 +524,7 @@ export default function ClientProjectView({ project: initialProject }: { project
       )}
 
       {/* Approval confirmed banner */}
-      {(approved || p.status === 'Released') && p.approved_date && (
+      {(approved || isFinished) && p.approved_date && (
         <div className="card" style={{ padding: '16px 24px', marginBottom: 20, background: 'rgba(0,200,150,0.06)', border: '1px solid rgba(0,200,150,0.25)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00C896" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
@@ -486,15 +570,185 @@ export default function ClientProjectView({ project: initialProject }: { project
         })}
       </div>
 
-
       {/* Files */}
       <ClientFilesSection files={p.files || []} />
 
+      {/* Messages */}
+      <MessagesSection projectId={p.id} portalToken={portalToken} clientName={p.name} initialMessages={p.messages || []} />
+
+      {/* Other projects switcher */}
+      {otherProjects.length > 0 && (
+        <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Your Other Projects</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {otherProjects.map(op => {
+              const opStatusColor: Record<string, string> = {
+                Funded: '#00C896', Released: '#0984E3', Pending: '#F59E0B', Invited: '#F59E0B',
+                Dispute: '#EF4444', Disputed: '#EF4444', Ready: '#A142F4', Revision: '#F97316',
+                Processing: '#8B5CF6', 'In Review': '#F97316', Received: '#10B981', Archived: '#64748B',
+              };
+              return (
+                <a
+                  key={op.id}
+                  href={`/client/${op.id}?token=${op.token}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border-light)',
+                    background: 'var(--surface)', textDecoration: 'none', color: 'inherit',
+                    transition: 'border-color 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10,
+                      background: op.color, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13, flexShrink: 0,
+                    }}>
+                      {op.initials}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{op.name}</div>
+                      {op.project_code && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{op.project_code}</div>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: opStatusColor[op.status] || '#94A3B8', display: 'inline-block' }} />
+                      {op.status}
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Client-facing Disputes (read-only) ─────────────────────────────────────
+// ── Messages ────────────────────────────────────────────────────────────────
+function MessagesSection({
+  projectId,
+  portalToken,
+  clientName,
+  initialMessages,
+}: {
+  projectId: string;
+  portalToken: string;
+  clientName: string;
+  initialMessages: ProjectMessage[];
+}) {
+  const [messages, setMessages] = useState<ProjectMessage[]>(initialMessages);
+  const [newMsg, setNewMsg] = useState('');
+  const [sending, startSend] = useTransition();
+  const [sendError, setSendError] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function loadMessages() {
+    try {
+      const res = await fetch(`/api/project-messages/${projectId}?token=${portalToken}`);
+      const data = await res.json();
+      if (data.messages) setMessages(data.messages);
+    } catch {}
+  }
+
+  useEffect(() => {
+    const interval = setInterval(loadMessages, 8000);
+    return () => clearInterval(interval);
+  }, [projectId, portalToken]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
+
+  function handleSend() {
+    const text = newMsg.trim();
+    if (!text) return;
+    setNewMsg('');
+    setSendError('');
+    startSend(async () => {
+      const res = await sendMessageAsClient(projectId, clientName, text);
+      if (!res.success) setSendError(res.error ?? 'Failed to send.');
+      else loadMessages();
+    });
+  }
+
+  return (
+    <div className="card" style={{ padding: 28, marginBottom: 20 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 20 }}>Messages</div>
+
+      <div style={{
+        background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border-light)',
+        padding: '16px', marginBottom: 16, maxHeight: 320, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
+        {messages.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
+            No messages yet. Send a message to your provider.
+          </div>
+        )}
+        {messages.map(m => (
+          <div key={m.id} style={{
+            display: 'flex', flexDirection: 'column',
+            alignItems: m.sender === 'client' ? 'flex-end' : 'flex-start',
+          }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+              {m.sender === 'client' ? 'You' : m.sender_name}
+            </div>
+            <div style={{
+              maxWidth: '75%', padding: '10px 14px', borderRadius: 12,
+              background: m.sender === 'client' ? '#6366F1' : 'var(--surface)',
+              color: m.sender === 'client' ? '#fff' : 'var(--text-primary)',
+              fontSize: 14, lineHeight: 1.5,
+              border: m.sender === 'provider' ? '1px solid var(--border-light)' : 'none',
+            }}>
+              {m.content}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              {new Date(m.created_at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <input
+          value={newMsg}
+          onChange={e => setNewMsg(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          placeholder="Type a message…"
+          style={{
+            flex: 1, padding: '10px 14px', borderRadius: 8,
+            background: 'var(--surface)', border: '1px solid var(--border-light)',
+            color: 'var(--text-primary)', fontSize: 14, fontFamily: 'inherit',
+          }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={sending || !newMsg.trim()}
+          style={{
+            padding: '10px 20px', borderRadius: 8,
+            background: sending || !newMsg.trim() ? 'var(--surface)' : '#6366F1',
+            color: sending || !newMsg.trim() ? 'var(--text-muted)' : '#fff',
+            fontWeight: 700, fontSize: 14, border: '1px solid var(--border-light)',
+            cursor: sending || !newMsg.trim() ? 'default' : 'pointer',
+            transition: 'background 0.15s',
+          }}
+        >
+          {sending ? '…' : 'Send'}
+        </button>
+      </div>
+      {sendError && <div style={{ color: '#EF4444', fontSize: 13, marginTop: 8 }}>{sendError}</div>}
+    </div>
+  );
+}
+
+// ── Client-facing Disputes (read-only) ──────────────────────────────────────
 function ClientDisputesSection({ disputes, amount }: { disputes: ProjectDispute[]; amount: number }) {
   return (
     <div style={{ marginBottom: 20 }}>
@@ -539,7 +793,7 @@ function ClientDisputesSection({ disputes, amount }: { disputes: ProjectDispute[
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, padding: '16px 0', borderTop: '1px solid #FECACA', borderBottom: '1px solid #FECACA', margin: '16px 0' }}>
               {[
                 ['DISPUTE OPENED', d.date],
-                ['AMOUNT FROZEN',  amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + '\u00a0$'],
+                ['AMOUNT FROZEN',  amount.toLocaleString('fr-CA', { maximumFractionDigits: 0 }) + ' $'],
                 ['STATUS',         d.status],
               ].map(([label, val], i) => (
                 <div key={label} style={{ paddingLeft: i > 0 ? 20 : 0, borderLeft: i > 0 ? '1px solid #FECACA' : 'none' }}>
@@ -562,7 +816,7 @@ function ClientDisputesSection({ disputes, amount }: { disputes: ProjectDispute[
   );
 }
 
-// ── Files & Deliverables ────────────────────────────────────────────────────
+// ── Files & Deliverables ─────────────────────────────────────────────────────
 function ClientFilesSection({ files }: { files: { id: string; name: string; date: string; type: string; url?: string }[] }) {
   const [downloading, setDownloading] = useState<string | null>(null);
 
