@@ -25,17 +25,21 @@ async function getUserId(): Promise<string> {
 export async function createProject(formData: FormData) {
   const { id: userId, name: editorName, email: userEmail } = await getUserSession();
 
-  const title         = formData.get('title')         as string;
-  const clientName    = formData.get('clientName')    as string;
-  const email         = formData.get('email')         as string;
-  const deliverables  = formData.get('deliverables')  as string;
-  const deliveryDate  = formData.get('deliveryDate')  as string;
-  const hourlyRate    = parseFloat(formData.get('hourlyRate')    as string) || 0;
-  const hours         = parseFloat(formData.get('hours')         as string) || 0;
-  const technicalCost = parseFloat(formData.get('technicalCost') as string) || 0;
-  const artisticCost  = parseFloat(formData.get('artisticCost')  as string) || 0;
-  const revisions     = parseInt(formData.get('revisions')       as string) || 0;
-  const internalNote  = (formData.get('internalNote') as string) || '';
+  const title           = formData.get('title')           as string;
+  const clientName      = formData.get('clientName')      as string;
+  const email           = formData.get('email')           as string;
+  const deliverables    = formData.get('deliverables')    as string;
+  const deliveryDate    = formData.get('deliveryDate')    as string;
+  const hourlyRate      = parseFloat(formData.get('hourlyRate')    as string) || 0;
+  const hours           = parseFloat(formData.get('hours')         as string) || 0;
+  const technicalCost   = parseFloat(formData.get('technicalCost') as string) || 0;
+  const artisticCost    = parseFloat(formData.get('artisticCost')  as string) || 0;
+  const revisions       = parseInt(formData.get('revisions')       as string) || 0;
+  const internalNote    = (formData.get('internalNote')   as string) || '';
+  const videoType        = (formData.get('videoType')        as string) || '';
+  const videoDestination = (formData.get('videoDestination') as string) || '';
+  const assignmentType   = (formData.get('assignmentType')   as string) || '';
+  const referenceLinks   = (formData.get('referenceLinks')   as string) || '';
   const paymentMethods: string[] = (() => {
     try { return JSON.parse((formData.get('paymentMethods') as string) || '["card"]'); }
     catch { return ['card']; }
@@ -46,7 +50,7 @@ export async function createProject(formData: FormData) {
   const color    = COLORS[Math.floor(Math.random() * COLORS.length)];
   const today    = new Date().toISOString().slice(0, 10);
 
-  const meta = JSON.stringify({ t: title, cn: clientName, r: hourlyRate, h: hours, tc: technicalCost, ac: artisticCost, rv: revisions, pm: paymentMethods });
+  const meta = JSON.stringify({ t: title, cn: clientName, r: hourlyRate, h: hours, tc: technicalCost, ac: artisticCost, rv: revisions, pm: paymentMethods, vt: videoType || undefined, vd: videoDestination || undefined, at: assignmentType || undefined, rl: referenceLinks || undefined });
   const description = internalNote
     ? `${deliverables}\n\n[meta]::${meta}\n[internal]::${internalNote}`
     : `${deliverables}\n\n[meta]::${meta}`;
@@ -107,16 +111,18 @@ export async function createProject(formData: FormData) {
   // Send contract email to the client (deliverables only — no internal metadata)
   if (inserted?.id && email) {
     sendContractEmail({
-      clientEmail:  email,
+      clientEmail:     email,
       clientName,
       editorName,
-      projectName:  title,
-      description:  deliverables,
+      projectName:     title,
+      description:     deliverables,
       amount,
-      startDate:    today,
-      deadline:     deliveryDate || '',
-      projectId:    inserted.id,
-      appUrl:       process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
+      startDate:       today,
+      deadline:        deliveryDate || '',
+      projectId:       inserted.id,
+      appUrl:          process.env.NEXT_PUBLIC_APP_URL ?? 'https://coredon.app',
+      assignmentType:  assignmentType as 'complete' | 'limited' | '',
+      referenceLinks:  referenceLinks || '',
     }).catch(err => console.error('Contract email error:', err));
   }
 

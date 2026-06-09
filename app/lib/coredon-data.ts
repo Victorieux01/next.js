@@ -25,7 +25,11 @@ function serializeProject(row: any, related: {
     versions:  related.versions,
     files: related.files.map((f: any) => ({
       ...f,
-      url: `${process.env.SUPABASE_URL}/storage/v1/object/public/project-files/${f.project_id}/${encodeURIComponent(f.name)}`,
+      // B2 keys (previews / originals) are preserved as-is; caller must request a signed URL.
+      // Non-video attachments without a stored URL get a Supabase public URL.
+      url: (f.url && (String(f.url).includes('/previews/') || String(f.url).includes('/originals/')))
+        ? f.url
+        : `${process.env.SUPABASE_URL}/storage/v1/object/public/project-files/${f.project_id}/${encodeURIComponent(f.name)}`,
     })),
     disputes: related.disputes,
     messages: related.messages.map((m: any) => ({ ...m, created_at: toStr(m.created_at) })),
@@ -168,6 +172,19 @@ export async function fetchProjectById(id: string, userId: string): Promise<Proj
   } catch (error) {
     console.error('fetchProjectById error:', error instanceof Error ? error.message : JSON.stringify(error));
     return null;
+  }
+}
+
+export async function fetchProviderName(userId: string): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('coredon_user_settings')
+      .select('first_name, last_name')
+      .eq('user_id', userId)
+      .single();
+    return data ? `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim() : '';
+  } catch {
+    return '';
   }
 }
 

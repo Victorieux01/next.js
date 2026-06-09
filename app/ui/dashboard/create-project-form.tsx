@@ -134,6 +134,10 @@ interface Step1 {
   email: string;
   deliverables: string;
   deliveryDate: string;
+  videoType: 'wedding_event_corporate' | 'pub_broadcast_clip_cinema' | '';
+  videoDestination: 'web_social' | 'tv_cinema_festival' | '';
+  assignmentType: 'complete' | 'limited' | '';
+  referenceLinks: string;
 }
 interface Step2 {
   hourlyRate: string;
@@ -321,6 +325,31 @@ function ContractPreview({ s1, s2 }: { s1: Step1; s2: Step2 }) {
           <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 10 }}>Internal notes are not included in this contract.</div>
         </div>
       </div>
+
+      {/* Rights Assignment — live preview */}
+      {s1.assignmentType && (
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+            Rights Assignment — {s1.assignmentType === 'complete' ? 'Complete Assignment' : 'Limited License'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            {s1.assignmentType === 'complete'
+              ? 'Editor transfers all economic rights to client upon full payment. Moral right and portfolio rights are retained by the editor.'
+              : 'Client receives a usage license per editor\'s attached contract. Defaults to complete assignment if no license terms are defined.'}
+          </div>
+        </div>
+      )}
+
+      {/* Protective clauses — always present */}
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-light)' }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Contractual Protections</div>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          <div><strong style={{ color: 'var(--text-secondary)' }}>Creator Recognition:</strong> Client recognizes editor as original creator and may not claim authorship to any third party.</div>
+          <div><strong style={{ color: 'var(--text-secondary)' }}>Portfolio Rights:</strong> Editor retains the irrevocable right to feature this work in their portfolio after payment release.</div>
+          <div><strong style={{ color: 'var(--text-secondary)' }}>Credit:</strong> Client agrees to credit editor in all public distribution contexts, unless otherwise agreed in writing.</div>
+          <div><strong style={{ color: 'var(--text-secondary)' }}>Document Hierarchy:</strong> This Coredon Brief is the primary reference. In case of contradiction with supplementary contracts, this Brief prevails.</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -448,6 +477,7 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
 
   const [s1, setS1] = useState<Step1>({
     title: '', clientName: '', companyName: '', email: '', deliverables: '', deliveryDate: '',
+    videoType: '', videoDestination: '', assignmentType: '', referenceLinks: '',
   });
   const [s2, setS2] = useState<Step2>({
     hourlyRate: '', hours: '', technicalCost: '0', artisticCost: '0', revisions: '', internalNote: '', paymentMethods: ['card'],
@@ -471,13 +501,14 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
 
   function validateStep1(): boolean {
     const e: Partial<Record<keyof Step1, string>> = {};
-    if (!s1.title.trim())        e.title        = 'Required';
-    if (!s1.clientName.trim())   e.clientName   = 'Required';
-    if (!s1.email.trim())        e.email        = 'Required';
+    if (!s1.title.trim())        e.title          = 'Required';
+    if (!s1.clientName.trim())   e.clientName     = 'Required';
+    if (!s1.email.trim())        e.email          = 'Required';
     else if (!/\S+@\S+\.\S+/.test(s1.email)) e.email = 'Invalid email';
-    if (!s1.deliverables.trim()) e.deliverables = 'Required';
-    if (!s1.deliveryDate)        e.deliveryDate = 'Required';
+    if (!s1.deliverables.trim()) e.deliverables   = 'Required';
+    if (!s1.deliveryDate)        e.deliveryDate   = 'Required';
     else if (s1.deliveryDate <= today) e.deliveryDate = 'Must be a future date';
+    if (!s1.assignmentType)      e.assignmentType = 'Required — defines ownership after payment';
     setErrors1(e);
     return Object.keys(e).length === 0;
   }
@@ -503,11 +534,15 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
     setSubmitError('');
     startTransition(async () => {
       const fd = new FormData();
-      fd.append('title',         s1.title);
-      fd.append('clientName',    s1.clientName);
-      fd.append('email',         s1.email);
-      fd.append('deliverables',  s1.deliverables);
-      fd.append('deliveryDate',  s1.deliveryDate);
+      fd.append('title',            s1.title);
+      fd.append('clientName',       s1.clientName);
+      fd.append('email',            s1.email);
+      fd.append('deliverables',     s1.deliverables);
+      fd.append('deliveryDate',     s1.deliveryDate);
+      fd.append('videoType',        s1.videoType);
+      fd.append('videoDestination', s1.videoDestination);
+      fd.append('assignmentType',   s1.assignmentType);
+      fd.append('referenceLinks',   s1.referenceLinks);
       fd.append('hourlyRate',    s2.hourlyRate);
       fd.append('hours',         s2.hours);
       fd.append('technicalCost', s2.technicalCost);
@@ -614,6 +649,87 @@ export default function CreateProjectForm({ clients = [] }: { clients?: CoredonC
             <Field label="Delivery Date" required error={errors1.deliveryDate} hint="— must be in the future">
               <DatePicker value={s1.deliveryDate} onChange={v => upd1('deliveryDate', v)} hasError={!!errors1.deliveryDate} />
             </Field>
+
+            {/* Assignment type — mandatory legal field (Section 3 of legal doc) */}
+            <Field label="Rights Assignment" required error={errors1.assignmentType} hint="— defines ownership after payment">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {([
+                  {
+                    value: 'complete',
+                    label: 'Complete Assignment',
+                    desc: 'Client becomes full owner of all economic rights upon payment. Editor retains inalienable moral right and portfolio rights.',
+                  },
+                  {
+                    value: 'limited',
+                    label: 'Limited License',
+                    desc: 'Client gets a usage license per your attached contract. Editor remains copyright owner. Falls back to complete if no license terms defined.',
+                  },
+                ] as const).map(opt => {
+                  const checked = s1.assignmentType === opt.value;
+                  return (
+                    <div
+                      key={opt.value}
+                      onClick={() => upd1('assignmentType', opt.value)}
+                      style={{
+                        background: 'var(--bg)', cursor: 'pointer',
+                        border: `1px solid ${checked ? '#4285F4' : errors1.assignmentType ? '#EF4444' : 'var(--border-light)'}`,
+                        borderRadius: 10, padding: '12px 16px', transition: 'border-color 0.15s',
+                        display: 'flex', alignItems: 'flex-start', gap: 12,
+                      }}
+                    >
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${checked ? '#4285F4' : 'var(--border)'}`, background: checked ? '#4285F4' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, transition: 'all 0.15s' }}>
+                        {checked && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 3 }}>{opt.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{opt.desc}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Field>
+
+            <Field label="Visual References" hint="— links to reference videos, moodboards, or style guides (optional)">
+              <textarea
+                style={{ ...inp, minHeight: 64, resize: 'vertical' }}
+                placeholder="Paste links, URLs, or describe reference style…"
+                value={s1.referenceLinks}
+                onChange={e => upd1('referenceLinks', e.target.value)}
+              />
+            </Field>
+
+            {/* Video brief — used to auto-select SS watermark amplitude (Section 3) */}
+            <div style={{ background: 'rgba(66,133,244,0.05)', border: '1px solid rgba(66,133,244,0.15)', borderRadius: 12, padding: '16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#4285F4', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Video Protection Brief</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <Field label="Type of Video" hint="— for watermark intensity">
+                  <select
+                    style={{ ...inp, appearance: 'none', cursor: 'pointer' }}
+                    value={s1.videoType}
+                    onChange={e => upd1('videoType', e.target.value as Step1['videoType'])}
+                  >
+                    <option value="">— Select type</option>
+                    <option value="wedding_event_corporate">Wedding / Event / Corporate</option>
+                    <option value="pub_broadcast_clip_cinema">Pub / Broadcast / Clip / Cinema</option>
+                  </select>
+                </Field>
+                <Field label="Final Destination" hint="— for watermark intensity">
+                  <select
+                    style={{ ...inp, appearance: 'none', cursor: 'pointer' }}
+                    value={s1.videoDestination}
+                    onChange={e => upd1('videoDestination', e.target.value as Step1['videoDestination'])}
+                  >
+                    <option value="">— Select destination</option>
+                    <option value="web_social">Web / Social Media / YouTube</option>
+                    <option value="tv_cinema_festival">TV / Cinema / Festival / Broadcast</option>
+                  </select>
+                </Field>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+                These fields auto-configure the invisible forensic watermark (Spread Spectrum) intensity for the delivered master file. The most restrictive rule always wins.
+              </div>
+            </div>
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 6 }}>
               <button

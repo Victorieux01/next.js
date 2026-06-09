@@ -1,8 +1,9 @@
 'use client';
 import { useState, useTransition, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Project, ProjectDispute, ProjectMessage, getDeliverables, getProjectMeta } from '@/app/lib/coredon-types';
+import { Project, ProjectDispute, ProjectMessage, getDeliverables, getProjectMeta, isB2Key } from '@/app/lib/coredon-types';
 import { approveProject, clientRequestChanges, sendMessageAsClient } from '@/app/lib/coredon-actions';
+import SecureVideoPlayer from '@/app/ui/dashboard/secure-video-player';
 
 async function redirectToCheckout(projectId: string, amount: number, email: string, projectName: string, token: string, paymentMethods: string[]) {
   const res = await fetch('/api/fund-project', {
@@ -88,9 +89,11 @@ type ProjectSummary = {
 export default function ClientProjectView({
   project: initialProject,
   allProjects,
+  editorName = '',
 }: {
   project: Project;
   allProjects?: ProjectSummary[];
+  editorName?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -291,6 +294,28 @@ export default function ClientProjectView({
           )}
         </div>
       </div>
+
+      {/* Legal notice — shown before funding (Section 5 CGU) */}
+      {isPending && (
+        <div className="card" style={{ padding: 20, marginBottom: 20, background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.18)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Legal Notices — Read Before Proceeding</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { label: 'Forensic Watermark', text: 'Every file viewed on this platform contains a unique invisible digital identifier linked to your account, session, and personal information. This identifier survives any modification, compression, or re-encoding of the file.' },
+              { label: 'Viewing Logs', text: 'Coredon records your entire viewing session including precise timestamps, segments watched, your IP address, and device information.' },
+              { label: 'Mandatory Arbitration', text: 'Any dispute must be submitted to Coredon\'s resolution mechanism before any external recourse. The decision, based on available evidence (viewing logs, forensic watermark, signed brief, communications), is final and binding for both parties.' },
+              { label: 'Chargeback', text: 'Initiating a chargeback without first submitting to Coredon arbitration constitutes a violation of these terms and results in immediate account suspension, escrow fund retention, and transmission of all evidence to the editor.' },
+            ].map(({ label, text }) => (
+              <div key={label} style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{label}: </span>{text}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 11, color: '#EF4444', fontWeight: 600 }}>
+            By funding the escrow below, you acknowledge and accept all of the above terms.
+          </div>
+        </div>
+      )}
 
       {/* Payment Panel — shown when Pending or Invited */}
       {isPending && (
@@ -571,7 +596,12 @@ export default function ClientProjectView({
       </div>
 
       {/* Files */}
-      <ClientFilesSection files={p.files || []} />
+      <ClientFilesSection
+        files={p.files || []}
+        projectId={p.id}
+        isInReview={isReady}
+        editorName={editorName}
+      />
 
       {/* Messages */}
       <MessagesSection projectId={p.id} portalToken={portalToken} clientName={p.name} initialMessages={p.messages || []} />
@@ -817,8 +847,19 @@ function ClientDisputesSection({ disputes, amount }: { disputes: ProjectDispute[
 }
 
 // ── Files & Deliverables ─────────────────────────────────────────────────────
-function ClientFilesSection({ files }: { files: { id: string; name: string; date: string; type: string; url?: string }[] }) {
+function ClientFilesSection({
+  files,
+  projectId,
+  isInReview,
+  editorName,
+}: {
+  files: { id: string; name: string; date: string; type: string; url?: string }[];
+  projectId: string;
+  isInReview: boolean;
+  editorName: string;
+}) {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
   async function handleDownload(url: string, name: string) {
     setDownloading(name);
@@ -880,43 +921,69 @@ function ClientFilesSection({ files }: { files: { id: string; name: string; date
       {files.length === 0 && (
         <div style={{ padding: '20px 14px', fontSize: 13, color: 'var(--text-muted)' }}>No files yet.</div>
       )}
-      {files.map((f, i) => (
-        <div
-          key={f.id}
-          onDoubleClick={() => f.url && window.open(f.url, '_blank')}
-          title={f.url ? 'Double-click to open' : undefined}
-          style={{
-            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', alignItems: 'center',
-            padding: '12px 14px',
-            borderBottom: i < files.length - 1 ? '1px solid var(--border-light)' : 'none',
-            borderRadius: 8,
-            cursor: f.url ? 'pointer' : 'default',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-            {fileIcon(f.type)}
-            <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-          </div>
-          <span style={{ fontSize: 13, color: 'var(--text-muted)', minWidth: 110 }}>{f.date}</span>
-          {f.url ? (
-            <button
-              onClick={() => handleDownload(f.url!, f.name)}
-              disabled={downloading === f.name}
+      {files.map((f, i) => {
+        const isPreviewVideo = f.type === 'video' && isB2Key(f.url) && f.url!.includes('/previews/');
+        const isExpanded = expandedVideo === f.id;
+        return (
+          <div key={f.id} style={{ borderBottom: i < files.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
+            <div
               style={{
-                fontSize: 13, fontWeight: 600, color: 'var(--blue)',
-                background: 'none', border: 'none', cursor: downloading === f.name ? 'wait' : 'pointer',
-                padding: 0, minWidth: 80, textAlign: 'right',
-                opacity: downloading === f.name ? 0.6 : 1,
-                fontFamily: 'inherit',
+                display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0 16px', alignItems: 'center',
+                padding: '12px 14px', borderRadius: 8,
               }}
             >
-              {downloading === f.name ? 'Downloading…' : 'Download'}
-            </button>
-          ) : (
-            <span style={{ fontSize: 13, color: 'var(--text-muted)', minWidth: 80, textAlign: 'right' }}>—</span>
-          )}
-        </div>
-      ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                {fileIcon(f.type)}
+                <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                {isPreviewVideo && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#8B5CF6', background: 'rgba(139,92,246,0.1)', borderRadius: 4, padding: '2px 6px', letterSpacing: '0.04em', flexShrink: 0 }}>
+                    PROTECTED PREVIEW
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)', minWidth: 110 }}>{f.date}</span>
+              {isPreviewVideo && isInReview ? (
+                <button
+                  onClick={() => setExpandedVideo(isExpanded ? null : f.id)}
+                  style={{
+                    fontSize: 13, fontWeight: 600, color: '#8B5CF6',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: 0, minWidth: 80, textAlign: 'right', fontFamily: 'inherit',
+                  }}
+                >
+                  {isExpanded ? 'Close' : 'Watch Preview'}
+                </button>
+              ) : f.url && !isB2Key(f.url) ? (
+                <button
+                  onClick={() => handleDownload(f.url!, f.name)}
+                  disabled={downloading === f.name}
+                  style={{
+                    fontSize: 13, fontWeight: 600, color: 'var(--blue)',
+                    background: 'none', border: 'none', cursor: downloading === f.name ? 'wait' : 'pointer',
+                    padding: 0, minWidth: 80, textAlign: 'right',
+                    opacity: downloading === f.name ? 0.6 : 1, fontFamily: 'inherit',
+                  }}
+                >
+                  {downloading === f.name ? 'Downloading…' : 'Download'}
+                </button>
+              ) : (
+                <span style={{ fontSize: 13, color: 'var(--text-muted)', minWidth: 80, textAlign: 'right' }}>—</span>
+              )}
+            </div>
+
+            {/* Inline secure player — only visible in In Review, only for B2 preview videos */}
+            {isPreviewVideo && isInReview && isExpanded && (
+              <div style={{ padding: '0 14px 16px' }}>
+                <SecureVideoPlayer
+                  storageKey={f.url!}
+                  projectId={projectId}
+                  editorName={editorName}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

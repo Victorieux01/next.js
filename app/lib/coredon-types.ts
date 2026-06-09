@@ -115,13 +115,29 @@ export function getDeliverables(description: string): string {
   return (description || '').split('\n\n[meta]::')[0].trim();
 }
 
-export function getProjectMeta(description: string): { clientName: string; hourlyRate: number; hours: number; technicalCost: number; artisticCost: number; revisions: number; paymentMethods: string[] } {
+export function getProjectMeta(description: string): {
+  clientName: string; hourlyRate: number; hours: number; technicalCost: number;
+  artisticCost: number; revisions: number; paymentMethods: string[];
+  videoType: VideoType | ''; videoDestination: VideoDestination | '';
+  assignmentType: AssignmentType | ''; referenceLinks: string;
+} {
   const match = (description || '').match(/\[meta\]::(.*?)(?:\n|$)/);
-  if (!match) return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0, paymentMethods: ['card'] };
+  const empty = { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0, paymentMethods: ['card'], videoType: '' as const, videoDestination: '' as const, assignmentType: '' as const, referenceLinks: '' };
+  if (!match) return empty;
   try {
     const m = JSON.parse(match[1]);
-    return { clientName: m.cn || '', hourlyRate: m.r || 0, hours: m.h || 0, technicalCost: m.tc || 0, artisticCost: m.ac || 0, revisions: m.rv || 0, paymentMethods: m.pm || ['card'] };
-  } catch { return { clientName: '', hourlyRate: 0, hours: 0, technicalCost: 0, artisticCost: 0, revisions: 0, paymentMethods: ['card'] }; }
+    return {
+      clientName: m.cn || '', hourlyRate: m.r || 0, hours: m.h || 0,
+      technicalCost: m.tc || 0, artisticCost: m.ac || 0, revisions: m.rv || 0,
+      paymentMethods: m.pm || ['card'],
+      videoType: (m.vt as VideoType) || '',
+      videoDestination: (m.vd as VideoDestination) || '',
+      assignmentType: (m.at as AssignmentType) || '',
+      referenceLinks: m.rl || '',
+    };
+  } catch {
+    return empty;
+  }
 }
 
 export function mapPaymentMethod(type: string): string {
@@ -132,6 +148,42 @@ export function mapPaymentMethod(type: string): string {
     case 'us_bank_account': return 'Bank Transfer';
     default:                return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
+}
+
+// ── Legal / Brief fields ─────────────────────────────────────────────────────
+export type AssignmentType = 'complete' | 'limited';
+
+// Legal clause text per Section 3 of the legal document
+export function getAssignmentClause(assignmentType: AssignmentType | '' | undefined, editorName: string): string {
+  if (assignmentType === 'complete') {
+    return `The editor (${editorName || 'the editor'}) transfers to the client all economic rights over the delivered work, exclusively, worldwide, and in perpetuity, upon full release of the escrow payment. The editor retains their inalienable moral right and the right to present the work in their personal portfolio.`;
+  }
+  if (assignmentType === 'limited') {
+    return `The editor (${editorName || 'the editor'}) grants the client a license to use the work according to the terms defined in the editor's contract attached to this transaction. In the absence of explicitly defined license terms in said contract, this assignment is automatically considered a complete assignment (as per Option A above).`;
+  }
+  return '';
+}
+
+// ── Video brief fields — used for automatic SS amplitude calculation ──────────
+export type VideoType = 'wedding_event_corporate' | 'pub_broadcast_clip_cinema';
+export type VideoDestination = 'web_social' | 'tv_cinema_festival';
+export type SsAmplitude = 'very_low' | 'low' | 'medium' | 'high';
+
+// Section 3 of architecture doc: amplitude auto-selection logic.
+// Proxy always uses medium/high — this function targets the SS master only.
+export function getSsAmplitude(
+  videoType: VideoType | '' | undefined,
+  destination: VideoDestination | '' | undefined,
+  budgetUsd: number,
+): SsAmplitude {
+  if (budgetUsd > 50000) return 'very_low';
+  if (videoType === 'pub_broadcast_clip_cinema') return 'low';
+  if (videoType === 'wedding_event_corporate' && destination === 'tv_cinema_festival') return 'low';
+  return 'medium';
+}
+
+export function isB2Key(url: string | undefined): boolean {
+  return !!(url && (url.includes('/previews/') || url.includes('/originals/')));
 }
 
 export type PlanKey = 'starter' | 'pro' | 'studio' | 'free';
