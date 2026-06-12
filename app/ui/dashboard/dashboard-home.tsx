@@ -53,11 +53,13 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     const mo = now.getMonth();
     const daysInMonth = new Date(yr, mo + 1, 0).getDate();
 
-    // Daily funded amounts for current month
+    // Daily escrow amounts for current month
+    // Released projects count by released_date; others count by prepaid_date
     const daily = new Array(daysInMonth).fill(0);
     projects.forEach(p => {
-      if (!p.prepaid_date) return;
-      const d = new Date(p.prepaid_date + 'T00:00:00');
+      const dateStr = p.status === 'Released' && p.released_date ? p.released_date : p.prepaid_date;
+      if (!dateStr) return;
+      const d = new Date(dateStr + 'T00:00:00');
       if (d.getFullYear() === yr && d.getMonth() === mo) {
         daily[d.getDate() - 1] += p.amount;
       }
@@ -69,7 +71,7 @@ function MonthlyEscrowChart({ projects }: { projects: Project[] }) {
     daily.forEach(v => { run += v; cum.push(run); });
     const total = run;
 
-    // Last day with a funded event
+    // Last day with an escrow event
     let lastDay = -1;
     for (let i = daily.length - 1; i >= 0; i--) {
       if (daily[i] > 0) { lastDay = i; break; }
