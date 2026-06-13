@@ -56,6 +56,20 @@ export const authConfig = {
       return token;
     },
 
+    redirect({ url, baseUrl }) {
+      // A stale __Secure-authjs.callback-url cookie can point back into
+      // /api/auth/* (e.g. the credentials callback), which only accepts POST
+      // and crashes with a Configuration error when navigated to. Never allow
+      // a post-login redirect into the auth API itself.
+      try {
+        const target = new URL(url, baseUrl);
+        if (target.origin === new URL(baseUrl).origin && !target.pathname.startsWith('/api/auth')) {
+          return target.toString();
+        }
+      } catch {}
+      return `${baseUrl}/dashboard`;
+    },
+
     session({ session, token }) {
       (session as any).twoFactorPending = token.twoFactorPending ?? false;
       if (session.user) {

@@ -4,7 +4,8 @@
     "build": "next build",
     "dev": "next dev --turbopack",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "deploy": "vercel pull --yes --environment=production && vercel build --prod && vercel deploy --prebuilt --prod"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1056.0",
